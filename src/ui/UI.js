@@ -101,7 +101,7 @@ export class UI {
 
     this.noiseSlider = this._slider(topbarSliders, 'Noise Level', 0.0, 1.0, 0.5, (v) => {
       this.callbacks.onNoiseLevel(v);
-    }, 0.05, '<b>Opt + [</b> and <b>]</b>');
+    }, 0.05, '<b>Shift + [</b> and <b>]</b>');
 
     // Tree settings (in sidebar)
     const brushLabel = document.createElement('div');
@@ -306,7 +306,7 @@ export class UI {
       • <b>Arrows / W / S:</b> Keyboard Pan<br><br>
       <b>Building & Tools</b><br>
       • <b>Chairlift:</b> Click once for base, again for top<br>
-      • <b>Shortcuts:</b> 1-9 Tools · [ ] Size · Cmd+[ ] Strength · Opt+[ ] Noise<br>
+      • <b>Shortcuts:</b> 1-9 Tools · [ ] Size · Cmd+[ ] Strength · Shift+[ ] Noise<br>
       • <b>System:</b> Ctrl+Z Undo · Ctrl+S Save
     `;
     sidebar.appendChild(hint);
@@ -406,35 +406,37 @@ export class UI {
           this.wireframeCheckbox.dispatchEvent(new Event('change'));
         }
       }
-      // Brush size with [ ] or strength with Cmd+[ ]
-      if (e.metaKey && e.key === '[') {
+      // Brush size with [ ] or strength with Cmd+[ ] or noise with Shift+[ ]
+      if (e.code === 'BracketLeft') {
         e.preventDefault();
-        const v = Math.max(0.05, parseFloat(this.strengthSlider.value) - 0.1);
-        this.strengthSlider.value = v;
-        this.strengthSlider.dispatchEvent(new Event('input'));
-      } else if (e.metaKey && e.key === ']') {
+        if (e.metaKey || e.ctrlKey) {
+          const v = Math.max(0.05, parseFloat(this.strengthSlider.value) - 0.1);
+          this.strengthSlider.value = v;
+          this.strengthSlider.dispatchEvent(new Event('input'));
+        } else if (e.shiftKey) {
+          const v = Math.max(0.0, parseFloat(this.noiseSlider.value) - 0.05);
+          this.noiseSlider.value = v;
+          this.noiseSlider.dispatchEvent(new Event('input'));
+        } else {
+          const v = Math.max(1, parseFloat(this.radiusSlider.value) - 4);
+          this.radiusSlider.value = v;
+          this.radiusSlider.dispatchEvent(new Event('input'));
+        }
+      } else if (e.code === 'BracketRight') {
         e.preventDefault();
-        const v = Math.min(2.0, parseFloat(this.strengthSlider.value) + 0.1);
-        this.strengthSlider.value = v;
-        this.strengthSlider.dispatchEvent(new Event('input'));
-      } else if (e.altKey && e.key === '[') {
-        e.preventDefault();
-        const v = Math.max(0.0, parseFloat(this.noiseSlider.value) - 0.05);
-        this.noiseSlider.value = v;
-        this.noiseSlider.dispatchEvent(new Event('input'));
-      } else if (e.altKey && e.key === ']') {
-        e.preventDefault();
-        const v = Math.min(1.0, parseFloat(this.noiseSlider.value) + 0.05);
-        this.noiseSlider.value = v;
-        this.noiseSlider.dispatchEvent(new Event('input'));
-      } else if (e.key === '[') {
-        const v = Math.max(1, parseFloat(this.radiusSlider.value) - 4);
-        this.radiusSlider.value = v;
-        this.radiusSlider.dispatchEvent(new Event('input'));
-      } else if (e.key === ']') {
-        const v = Math.min(100, parseFloat(this.radiusSlider.value) + 4);
-        this.radiusSlider.value = v;
-        this.radiusSlider.dispatchEvent(new Event('input'));
+        if (e.metaKey || e.ctrlKey) {
+          const v = Math.min(2.0, parseFloat(this.strengthSlider.value) + 0.1);
+          this.strengthSlider.value = v;
+          this.strengthSlider.dispatchEvent(new Event('input'));
+        } else if (e.shiftKey) {
+          const v = Math.min(1.0, parseFloat(this.noiseSlider.value) + 0.05);
+          this.noiseSlider.value = v;
+          this.noiseSlider.dispatchEvent(new Event('input'));
+        } else {
+          const v = Math.min(100, parseFloat(this.radiusSlider.value) + 4);
+          this.radiusSlider.value = v;
+          this.radiusSlider.dispatchEvent(new Event('input'));
+        }
       }
     });
   }
