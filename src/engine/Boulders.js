@@ -79,7 +79,7 @@ export class Boulders {
 
        if (height < -0.5) continue; // no boulders fully underwater usually
 
-       const isSnowy = height >= (seaLevel + 28);
+       const isSnowy = height >= (seaLevel + 37);
        const variantIdx = Math.floor(Math.random() * BOULDER_VARIANTS.length);
        if (this.boulderIMs[variantIdx].count >= MAX_PER_VARIANT) continue;
 
@@ -176,7 +176,7 @@ export class Boulders {
     for (const b of this.boulders) {
       const { gx, gz } = this.terrain.worldToGrid(b.worldX, b.worldZ);
       const h = this.terrain.getHeight(gx, gz);
-      const isSnowy = h >= (seaLevel + 28);
+      const isSnowy = h >= (seaLevel + 37);
 
       if (h !== b.height || isSnowy !== b.isSnowy) {
         b.height = h;
@@ -205,7 +205,7 @@ export class Boulders {
        if (gx < 0 || gx >= this.terrain.resolution || gz < 0 || gz >= this.terrain.resolution) continue;
        const height = this.terrain.getHeight(gx, gz);
 
-       const isSnowy = height >= (seaLevel + 28);
+       const isSnowy = height >= (seaLevel + 37);
        const bData = {
           worldX: d.worldX,
           worldZ: d.worldZ,

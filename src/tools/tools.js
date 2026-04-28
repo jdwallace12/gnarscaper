@@ -3,6 +3,8 @@
  * Each tool has a name, icon, color, and an apply() function.
  */
 
+import { fbm } from '../engine/noise.js';
+
 export const TOOLS = {
   raise: {
     name: 'Raise',
@@ -156,6 +158,78 @@ export const TOOLS = {
     },
   },
 
+  roughen: {
+    name: 'Roughen',
+    icon: '📊',
+    color: '#a78bfa',
+    cursor: 'crosshair',
+    isBrush: true,
+    apply(heightmap, res, cx, cz, radius, strength) {
+      // Add fBm noise to make terrain look more organic and rough
+      applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+        const x = i % res;
+        const z = Math.floor(i / res);
+        
+        // Use a fixed scale for the brush noise so it doesn't change wildly
+        // Offset by the grid coordinates
+        const scale = 15.0;
+        const noiseVal = fbm(x / res * scale, z / res * scale, 4, 2.0, 0.5);
+        
+        // Apply noise relative to strength and falloff
+        heightmap[i] += noiseVal * strength * falloff * 0.5;
+      });
+    },
+  },
+
+  erode: {
+    name: 'Erode',
+    icon: '💧',
+    color: '#78716c',
+    cursor: 'crosshair',
+    isBrush: true,
+    apply(heightmap, res, cx, cz, radius, strength) {
+      // Erosion: steeper areas get carved more, material flows downhill
+      // Read from a copy to avoid feedback loops within a single pass
+      const copy = new Float32Array(heightmap);
+      applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+        const x = i % res;
+        const z = Math.floor(i / res);
+        if (x < 1 || x >= res - 1 || z < 1 || z >= res - 1) return;
+
+        // Compute local gradient (steepness)
+        const hL = copy[z * res + (x - 1)];
+        const hR = copy[z * res + (x + 1)];
+        const hU = copy[(z - 1) * res + x];
+        const hD = copy[(z + 1) * res + x];
+        const h = copy[i];
+
+        const gradX = (hR - hL) * 0.5;
+        const gradZ = (hD - hU) * 0.5;
+        const steepness = Math.sqrt(gradX * gradX + gradZ * gradZ);
+
+        // Steeper areas erode more aggressively — carve channels
+        const erosionAmount = steepness * strength * falloff * 0.8;
+        heightmap[i] -= erosionAmount;
+
+        // Deposit a fraction of eroded material downhill
+        const gradMag = steepness || 0.001;
+        const dnx = Math.round(-gradX / gradMag);
+        const dnz = Math.round(-gradZ / gradMag);
+        const nx = x + dnx;
+        const nz = z + dnz;
+        if (nx >= 0 && nx < res && nz >= 0 && nz < res) {
+          heightmap[nz * res + nx] += erosionAmount * 0.3; // 30% deposited downhill
+        }
+
+        // Gentle areas get smoothed (sediment fills in)
+        if (steepness < 0.3) {
+          const avg = (hL + hR + hU + hD) / 4;
+          heightmap[i] += (avg - h) * falloff * strength * 0.2;
+        }
+      });
+    },
+  },
+
   flatten: {
     name: 'Flatten',
     icon: '⬜',
@@ -303,6 +377,112 @@ export const TOOLS = {
     },
   },
 
+  ridge: {
+    name: 'Ridge',
+    icon: '🔺',
+    color: '#f59e0b',
+    cursor: 'crosshair',
+    isBrush: true,
+    _startX: null,
+    _startZ: null,
+    _startH: null,
+    apply(heightmap, res, cx, cz, radius, strength, isStart) {
+      const ci = Math.round(cz) * res + Math.round(cx);
+
+      // Capture the start of the ridge
+      if (isStart || this._startX === null) {
+        this._startX = cx;
+        this._startZ = cz;
+        this._startH = heightmap[ci] ?? 0;
+      }
+
+      // Direction vector from start to current brush position
+      const dirX = cx - this._startX;
+      const dirZ = cz - this._startZ;
+      const dirLen = Math.sqrt(dirX * dirX + dirZ * dirZ);
+
+      // Need a minimum drag distance to establish direction
+      if (dirLen < 1.0) return;
+
+      // Normalized direction (along the ridge) and perpendicular
+      const ndx = dirX / dirLen;
+      const ndz = dirZ / dirLen;
+      const perpX = -ndz;
+      const perpZ = ndx;
+
+      const currentH = heightmap[ci] ?? 0;
+
+      applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+        const x = i % res;
+        const z = Math.floor(i / res);
+
+        // Vector from start to this grid point
+        const px = x - this._startX;
+        const pz = z - this._startZ;
+
+        // Project onto ridge direction (along) and perpendicular (across)
+        const along = px * ndx + pz * ndz;
+        const across = px * perpX + pz * perpZ;
+
+        // Normalized cross-section position: -1 to 1
+        const crossT = Math.max(-1, Math.min(1, across / radius));
+
+        // Ridge profile: raised spine at center, sloping down to sides
+        // cos(crossT * π) goes from -1 (edges) to +1 (center)
+        // We want the center high and edges at natural terrain level
+        const ridgeProfile = (Math.cos(crossT * Math.PI) + 1) * 0.5; // 0 at edges, 1 at center
+
+        // Sharp spine: square the profile for a more defined ridge
+        const sharpProfile = ridgeProfile * ridgeProfile;
+
+        // Graded height along the drag direction
+        const t = along / dirLen;
+        const gradedH = this._startH + t * (currentH - this._startH);
+
+        // Ridge height scales with strength
+        const ridgeHeight = strength * 4.0;
+        const targetH = gradedH + sharpProfile * ridgeHeight;
+
+        // Blend toward the target shape
+        heightmap[i] += (targetH - heightmap[i]) * falloff * 0.3;
+      });
+    },
+  },
+
+  plateau: {
+    name: 'Plateau',
+    icon: '🔲',
+    color: '#a3a3a3',
+    cursor: 'crosshair',
+    isBrush: true,
+    _targetHeight: null,
+    apply(heightmap, res, cx, cz, radius, strength, isStart) {
+      if (isStart || this._targetHeight === null) {
+        const ci = Math.round(cz) * res + Math.round(cx);
+        this._targetHeight = heightmap[ci] ?? 0;
+      }
+      const target = this._targetHeight;
+
+      applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+        // Sharp-edged plateau: use a step function instead of smooth Gaussian
+        // Create a flat interior with a steep rim at the edges
+        // Remap falloff so most of the interior is at full strength
+        const plateauFalloff = Math.min(1.0, Math.pow(falloff, 0.3));
+
+        // Raise a subtle rim at the boundary where falloff drops off
+        // The rim zone is where falloff is between 0.15 and 0.5
+        let rimBoost = 0;
+        if (falloff > 0.05 && falloff < 0.4) {
+          const rimT = (falloff - 0.05) / 0.35;
+          rimBoost = Math.sin(rimT * Math.PI) * strength * 1.5;
+        }
+
+        const targetH = target + rimBoost;
+        heightmap[i] += (targetH - heightmap[i]) * plateauFalloff * strength * 0.4;
+      });
+    },
+  },
+
   trees: {
     name: 'Trees',
     icon: '🌲',
@@ -385,7 +565,10 @@ function applyBrush(heightmap, res, cx, cz, radius, fn) {
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist > radius) continue;
       // Gaussian falloff
-      const falloff = Math.exp(-((dist * dist) / (2 * (radius * 0.45) ** 2)));
+      const sigma = radius * 0.45;
+      const falloff = sigma > 0.001 
+        ? Math.exp(-((dist * dist) / (2 * sigma * sigma)))
+        : (dist < 0.1 ? 1.0 : 0.0);
       const i = z * res + x;
       fn(i, falloff);
     }

@@ -128,7 +128,7 @@ export class Trees {
 
       if (height < -0.5) continue;
 
-      const isSnowy = height >= (seaLevel + 28);
+      const isSnowy = height >= (seaLevel + 37);
       let variantIdx;
       if (isSnowy) {
         variantIdx = Math.floor(Math.random() * 6); // Only pines in snow
@@ -264,7 +264,7 @@ export class Trees {
     for (const t of this.trees) {
       const { gx, gz } = this.terrain.worldToGrid(t.worldX, t.worldZ);
       const h = this.terrain.getHeight(gx, gz);
-      const isSnowy = h >= (seaLevel + 28);
+      const isSnowy = h >= (seaLevel + 37);
 
       if (h !== t.height || isSnowy !== t.isSnowy) {
         t.height = h;
@@ -297,7 +297,7 @@ export class Trees {
       if (gx < 0 || gx >= this.terrain.resolution || gz < 0 || gz >= this.terrain.resolution) continue;
       const height = this.terrain.getHeight(gx, gz);
 
-      const isSnowy = height >= (seaLevel + 28);
+      const isSnowy = height >= (seaLevel + 37);
       const variantIdx = d.variantIdx;
       
       const treeData = {
