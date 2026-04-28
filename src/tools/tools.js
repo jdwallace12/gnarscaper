@@ -12,13 +12,13 @@ export const TOOLS = {
     color: '#4ade80',
     cursor: 'crosshair',
     isBrush: true,
-    apply(heightmap, res, cx, cz, radius, strength) {
+    apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount = 0.5) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
         const x = i % res;
         const z = Math.floor(i / res);
         // Add a bit of organic noise so it doesn't look like a smooth blob
         const noise = fbm(x * 0.1, z * 0.1, 3, 2.0, 0.5) * 0.5 + 0.5; // 0..1
-        heightmap[i] += strength * falloff * (0.7 + noise * 0.6);
+        heightmap[i] += strength * falloff * ( (1.0 - noiseAmount) + (noise * noiseAmount * 1.5) );
       });
     },
   },
@@ -45,14 +45,14 @@ export const TOOLS = {
     color: '#d946ef',
     cursor: 'crosshair',
     isBrush: true,
-    apply(heightmap, res, cx, cz, radius, strength) {
+    apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount = 0.5) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
         const x = i % res;
         const z = Math.floor(i / res);
         // Sharp spire/peak using tighter exponential falloff
         // Add more aggressive noise for craggy peaks
         const noise = fbm(x * 0.15, z * 0.15, 4, 2.0, 0.5) * 0.5 + 0.5; // 0..1
-        heightmap[i] += strength * Math.pow(falloff, 4) * 0.8 * (0.5 + noise * 1.0);
+        heightmap[i] += strength * Math.pow(falloff, 4) * 0.8 * ( (1.0 - noiseAmount) + (noise * noiseAmount * 2.0) );
       });
     },
   },
@@ -172,7 +172,7 @@ export const TOOLS = {
     color: '#a78bfa',
     cursor: 'crosshair',
     isBrush: true,
-    apply(heightmap, res, cx, cz, radius, strength) {
+    apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount = 0.5) {
       // Add fBm noise to make terrain look more organic and rough
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
         const x = i % res;
@@ -183,8 +183,8 @@ export const TOOLS = {
         const scale = 15.0;
         const noiseVal = fbm(x / res * scale, z / res * scale, 4, 2.0, 0.5);
         
-        // Apply noise relative to strength and falloff
-        heightmap[i] += noiseVal * strength * falloff * 0.5;
+        // Apply noise relative to strength, falloff, and noiseAmount slider
+        heightmap[i] += noiseVal * strength * falloff * noiseAmount;
       });
     },
   },

@@ -1,8 +1,8 @@
 import { TOOLS } from '../tools/tools.js';
 
 export class UI {
-  constructor({ onToolChange, onBrushRadius, onBrushStrength, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour }) {
-    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour };
+  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour }) {
+    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour };
     this.activeToolKey = 'raise';
     this._build();
     this._bindKeys();
@@ -98,6 +98,10 @@ export class UI {
     this.strengthSlider = this._slider(topbarSliders, 'Strength', 0.05, 2.0, 0.6, (v) => {
       this.callbacks.onBrushStrength(v);
     }, 0.05, '<b>Cmd/Ctrl + [</b> and <b>]</b>');
+
+    this.noiseSlider = this._slider(topbarSliders, 'Noise Level', 0.0, 1.0, 0.5, (v) => {
+      this.callbacks.onNoiseLevel(v);
+    }, 0.05, '<b>Opt + [</b> and <b>]</b>');
 
     // Tree settings (in sidebar)
     const brushLabel = document.createElement('div');
@@ -302,7 +306,7 @@ export class UI {
       • <b>Arrows / W / S:</b> Keyboard Pan<br><br>
       <b>Building & Tools</b><br>
       • <b>Chairlift:</b> Click once for base, again for top<br>
-      • <b>Shortcuts:</b> 1-9 Tools · [ ] Size · Cmd+[ ] Strength<br>
+      • <b>Shortcuts:</b> 1-9 Tools · [ ] Size · Cmd+[ ] Strength · Opt+[ ] Noise<br>
       • <b>System:</b> Ctrl+Z Undo · Ctrl+S Save
     `;
     sidebar.appendChild(hint);
@@ -324,6 +328,9 @@ export class UI {
     lblWrap.style.flexDirection = 'column';
     lblWrap.style.gap = '2px';
     lblWrap.style.alignItems = 'flex-start';
+    if (parent.id === 'topbar' || parent.parentElement?.id === 'topbar') {
+      lblWrap.style.minWidth = '150px';
+    }
 
     const lbl = document.createElement('label');
     lbl.style.gap = '8px'; // Add space between label and value
@@ -410,6 +417,16 @@ export class UI {
         const v = Math.min(2.0, parseFloat(this.strengthSlider.value) + 0.1);
         this.strengthSlider.value = v;
         this.strengthSlider.dispatchEvent(new Event('input'));
+      } else if (e.altKey && e.key === '[') {
+        e.preventDefault();
+        const v = Math.max(0.0, parseFloat(this.noiseSlider.value) - 0.05);
+        this.noiseSlider.value = v;
+        this.noiseSlider.dispatchEvent(new Event('input'));
+      } else if (e.altKey && e.key === ']') {
+        e.preventDefault();
+        const v = Math.min(1.0, parseFloat(this.noiseSlider.value) + 0.05);
+        this.noiseSlider.value = v;
+        this.noiseSlider.dispatchEvent(new Event('input'));
       } else if (e.key === '[') {
         const v = Math.max(1, parseFloat(this.radiusSlider.value) - 4);
         this.radiusSlider.value = v;

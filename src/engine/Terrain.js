@@ -160,7 +160,7 @@ export class Terrain {
   }
 
   /** Paint / Sculpt asynchronously via Worker */
-  sculpt(toolName, cx, cz, radius, strength, isStart) {
+  sculpt(toolName, cx, cz, radius, strength, isStart, noiseAmount) {
     this.worker.postMessage({
       type: 'sculpt',
       toolName,
@@ -169,6 +169,7 @@ export class Terrain {
       radius,
       strength,
       isStart,
+      noiseAmount,
       toolState: this._toolState
     });
   }

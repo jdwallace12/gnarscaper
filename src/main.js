@@ -79,6 +79,7 @@ const ui = new UI({
   },
   onBrushRadius(v) { brush.radius = v; },
   onBrushStrength(v) { brush.strength = v; },
+  onNoiseLevel(v) { brush.noiseAmount = v; },
   onTreeDensity(v) { treeDensity = v; },
   onBaseElevation(v) {
     if (v !== currentBaseElevation) {

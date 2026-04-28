@@ -206,13 +206,15 @@ self.onmessage = function (e) {
     const tool = TOOLS[toolName];
     
     if (tool && tool.apply) {
+      const { toolName, cx, cz, radius, strength, isStart, toolState, noiseAmount } = msg;
+      
       // Re-hydrate any necessary state for continuous tools like Ramp or Flatten
       if (toolState) {
         Object.assign(tool, toolState);
       }
       
       const mapToApply = tool.isSnowBrush ? snowmap : heightmap;
-      tool.apply(mapToApply, resolution, cx, cz, radius, strength, isStart);
+      tool.apply(mapToApply, resolution, cx, cz, radius, strength, isStart, noiseAmount);
       
       // Sanitize: replace any NaNs with 0 to prevent disappearing terrain
       for (let i = 0; i < heightmap.length; i++) {

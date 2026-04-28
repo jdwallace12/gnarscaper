@@ -48,8 +48,7 @@ body {
 #topbar {
   position: fixed;
   top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 16px;
   background: var(--glass-bg);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -70,10 +69,12 @@ body {
   from {
     top: -50px;
     opacity: 0;
+    transform: translateY(0);
   }
   to {
     top: 16px;
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -91,7 +92,7 @@ body {
 }
 
 #topbar input[type="range"] {
-  width: 150px;
+  width: 160px;
   height: 6px;
 }
 

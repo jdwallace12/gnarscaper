@@ -14,6 +14,7 @@ export class BrushEngine {
     this.tool = null;       // current tool object
     this.radius = 16;
     this.strength = 0.6;
+    this.noiseAmount = 0.5;
     this.painting = false;
     this._isStart = false;
     this.enabled = true; // Visibility and interaction flag
@@ -114,7 +115,8 @@ export class BrushEngine {
           gx, gz,
           this.radius,
           this.strength,
-          this._isStart
+          this._isStart,
+          this.noiseAmount
         );
       }
       this._isStart = false;
