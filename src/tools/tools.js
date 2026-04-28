@@ -14,7 +14,11 @@ export const TOOLS = {
     isBrush: true,
     apply(heightmap, res, cx, cz, radius, strength) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
-        heightmap[i] += strength * falloff;
+        const x = i % res;
+        const z = Math.floor(i / res);
+        // Add a bit of organic noise so it doesn't look like a smooth blob
+        const noise = fbm(x * 0.1, z * 0.1, 3, 2.0, 0.5) * 0.5 + 0.5; // 0..1
+        heightmap[i] += strength * falloff * (0.7 + noise * 0.6);
       });
     },
   },
@@ -43,8 +47,12 @@ export const TOOLS = {
     isBrush: true,
     apply(heightmap, res, cx, cz, radius, strength) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+        const x = i % res;
+        const z = Math.floor(i / res);
         // Sharp spire/peak using tighter exponential falloff
-        heightmap[i] += strength * Math.pow(falloff, 4) * 0.8;
+        // Add more aggressive noise for craggy peaks
+        const noise = fbm(x * 0.15, z * 0.15, 4, 2.0, 0.5) * 0.5 + 0.5; // 0..1
+        heightmap[i] += strength * Math.pow(falloff, 4) * 0.8 * (0.5 + noise * 1.0);
       });
     },
   },
