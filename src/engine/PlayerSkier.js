@@ -133,6 +133,7 @@ export class PlayerSkier {
     // Reset camera tracking state
     this.cameraHeading = undefined;
     this._smoothCamY = undefined;
+    this._smoothLookY = undefined;
     this._smoothTravelX = undefined;
     this._smoothTravelZ = undefined;
     this._lastCamTrackX = undefined;
@@ -455,12 +456,15 @@ export class PlayerSkier {
   }
 
   /** Get the chase camera target position and look-at (uses pre-allocated vectors) */
-  getCameraTarget(alpha) {
+  getCameraTarget(alpha, dt) {
     // Interpolate everything strictly to exactly match visual drawing
     const x = this._prevWx + (this.wx - this._prevWx) * alpha;
     const z = this._prevWz + (this.wz - this._prevWz) * alpha;
     const h = this._prevY + (this.y - this._prevY) * alpha;
     
+    // Use dt for frame-rate independent smoothing (fall back to 1/60 if missing)
+    const frameDt = dt || (1 / 60);
+
     const camDist = 14;  // Slightly tighter follow camera
     const camHeight = 7 + this.cameraPitch * 5; // Balanced height
 
@@ -475,10 +479,11 @@ export class PlayerSkier {
     this._lastCamTrackX = x;
     this._lastCamTrackZ = z;
 
-    // Smoothed movement tracking — responsive enough to feel alive, smooth enough to not jitter
-    const moveSmoothFactor = 0.06;
-    this._smoothTravelX += (dx - this._smoothTravelX) * moveSmoothFactor;
-    this._smoothTravelZ += (dz - this._smoothTravelZ) * moveSmoothFactor;
+    // Frame-rate independent smoothed movement tracking
+    // Time constant ~0.5s — responsive enough to track direction changes, smooth enough to filter jitter
+    const moveSmooth = 1 - Math.pow(0.005, frameDt);
+    this._smoothTravelX += (dx - this._smoothTravelX) * moveSmooth;
+    this._smoothTravelZ += (dz - this._smoothTravelZ) * moveSmooth;
 
     // Update camera heading based on smoothed travel direction
     const travelMag = Math.sqrt(this._smoothTravelX * this._smoothTravelX + this._smoothTravelZ * this._smoothTravelZ);
@@ -487,7 +492,9 @@ export class PlayerSkier {
       let diff = travelHeading - this.cameraHeading;
       while (diff < -Math.PI) diff += Math.PI * 2;
       while (diff > Math.PI) diff -= Math.PI * 2;
-      this.cameraHeading += diff * 0.035; // Smooth tracking — stable on turns, follows forward
+      // Time constant ~2.5s — very cinematic, lazy camera that never snaps during turns
+      const headingSmooth = 1 - Math.pow(0.15, frameDt);
+      this.cameraHeading += diff * headingSmooth;
     }
 
     const camX = x - Math.sin(this.cameraHeading) * camDist;
@@ -500,14 +507,19 @@ export class PlayerSkier {
       camY = terrainHAtCam + minHeightAboveGround;
     }
 
-    // Smooth vertical camera position to prevent Y-axis jumpiness
+    // Frame-rate independent vertical smoothing — time constant ~1.8s prevents Y-axis jumpiness
     if (this._smoothCamY === undefined) this._smoothCamY = camY;
-    this._smoothCamY += (camY - this._smoothCamY) * 0.03;
+    const ySmooth = 1 - Math.pow(0.08, frameDt);
+    this._smoothCamY += (camY - this._smoothCamY) * ySmooth;
 
+    // Also smooth the lookAt Y to prevent vertical jitter in the focus point
     const lookY = h + 1.5 + this.cameraPitch * 8;
+    if (this._smoothLookY === undefined) this._smoothLookY = lookY;
+    const lookYSmooth = 1 - Math.pow(0.04, frameDt);
+    this._smoothLookY += (lookY - this._smoothLookY) * lookYSmooth;
 
     this._camPosVec.set(camX, this._smoothCamY, camZ);
-    this._lookAtVec.set(x, lookY, z);
+    this._lookAtVec.set(x, this._smoothLookY, z);
     return { position: this._camPosVec, lookAt: this._lookAtVec };
   }
 

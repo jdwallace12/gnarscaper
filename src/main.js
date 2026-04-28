@@ -476,7 +476,7 @@ function animate() {
   if (isSkierMode) {
     const alpha = physicsAccumulator / PHYSICS_DT;
     playerSkier.interpolateVisuals(alpha, dt);
-    const cam = playerSkier.getCameraTarget(alpha);
+    const cam = playerSkier.getCameraTarget(alpha, dt);
     scene.updateSkierCamera(cam.position, cam.lookAt, dt);
     ui.updateSkierSpeed(playerSkier.speed);
   } else if (isTourMode) {

@@ -222,6 +222,87 @@ export const TOOLS = {
     },
   },
 
+  halfpipe: {
+    name: 'Half Pipe',
+    icon: '🛹',
+    color: '#06b6d4',
+    cursor: 'crosshair',
+    isBrush: true,
+    _startX: null,
+    _startZ: null,
+    _startH: null,
+    apply(heightmap, res, cx, cz, radius, strength, isStart) {
+      const ci = Math.round(cz) * res + Math.round(cx);
+
+      // Capture the start of the halfpipe
+      if (isStart || this._startX === null) {
+        this._startX = cx;
+        this._startZ = cz;
+        this._startH = heightmap[ci] ?? 0;
+      }
+
+      // Direction vector from start to current brush position
+      const dirX = cx - this._startX;
+      const dirZ = cz - this._startZ;
+      const dirLen = Math.sqrt(dirX * dirX + dirZ * dirZ);
+
+      // Need a minimum drag distance to establish direction
+      if (dirLen < 1.0) return;
+
+      // Normalized direction (along the pipe) and perpendicular (across the pipe)
+      const ndx = dirX / dirLen;
+      const ndz = dirZ / dirLen;
+      // Perpendicular = 90° rotation of direction
+      const perpX = -ndz;
+      const perpZ = ndx;
+
+      const currentH = heightmap[ci] ?? 0;
+
+      applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+        const x = i % res;
+        const z = Math.floor(i / res);
+
+        // Vector from start to this grid point
+        const px = x - this._startX;
+        const pz = z - this._startZ;
+
+        // Project onto pipe direction (along) and perpendicular (across)
+        const along = px * ndx + pz * ndz;
+        const across = px * perpX + pz * perpZ;
+
+        // Normalized cross-section position: -1 to 1 across the pipe width
+        const crossT = across / radius;
+
+        // Skip points far outside the pipe width
+        if (Math.abs(crossT) > 1.0) return;
+
+        // U-shaped cross section using cosine curve:
+        // At center (crossT=0): cos(0) = 1 → lowest point (dig down)
+        // At edges (crossT=±1): cos(π) = -1 → highest point (walls rise)
+        // Shifted so: profile goes from -1 (wall top) to +1 (trough bottom)
+        const uProfile = Math.cos(crossT * Math.PI);
+
+        // Graded height: interpolate along the drag direction
+        const t = along / dirLen;
+        const gradedH = this._startH + t * (currentH - this._startH);
+
+        // Wall height and trough depth scale with strength
+        const wallHeight = strength * 2.5;
+        const troughDepth = strength * 3.0;
+
+        // Combine: negative uProfile = walls up, positive = trough down
+        const shapeOffset = uProfile > 0
+          ? -uProfile * troughDepth   // Dig center down
+          : -uProfile * wallHeight;   // Raise walls up
+
+        const targetH = gradedH + shapeOffset;
+
+        // Blend toward the target shape
+        heightmap[i] += (targetH - heightmap[i]) * falloff * 0.35;
+      });
+    },
+  },
+
   trees: {
     name: 'Trees',
     icon: '🌲',

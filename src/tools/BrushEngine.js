@@ -266,9 +266,10 @@ export class BrushEngine {
   _onMouseUp() {
     if (this.painting) {
       this.painting = false;
-      // Reset tool state
-      if (this.tool && this.tool._targetHeight !== undefined) {
-        this.tool._targetHeight = null;
+      // Reset tool state for continuous tools
+      if (this.tool) {
+        if (this.tool._targetHeight !== undefined) this.tool._targetHeight = null;
+        if (this.tool._startX !== undefined) this.tool._startX = null;
       }
     }
   }
