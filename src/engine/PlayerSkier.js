@@ -25,7 +25,7 @@ export class PlayerSkier {
     this.grounded = true;
 
     // Input state
-    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false };
+    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false };
 
     // Camera pitch (controlled by W/S)
     this.cameraPitch = 0; // radians, positive = look up
@@ -120,7 +120,7 @@ export class PlayerSkier {
   /** Remove the player skier and clean up */
   despawn() {
     this.active = false;
-    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false };
+    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false };
     this.cameraPitch = 0;
 
     // Reset chairlift state so re-entering doesn't resume a ride
@@ -291,16 +291,29 @@ export class PlayerSkier {
     const terrainH = this.terrain.getInterpolatedHeight(this.wx, this.wz);
 
     if (this.grounded) {
-      const dh = terrainH - this.y;
-      const slopeVy = dh / dt;
-
-      // If the ground falls away faster than gravity or we hit a bump fast
-      if (slopeVy < -15 && this.speed > 10) {
+      // Manual Jump
+      if (this._keys.jump) {
         this.grounded = false;
-        this.vy = slopeVy; 
+        // Launch with significant upward velocity (e.g. an "ollie" or push-off)
+        // We preserve any existing upward momentum from a slope, and add jump force
+        this.vy = Math.max((terrainH - this.y) / dt, 0) + 6.0; 
+        this._keys.jump = false; // Consume the jump press
       } else {
-        this.y = terrainH;
-        this.vy = slopeVy;
+        // Calculate where physics would put us if we went airborne this frame
+        const ballisticVy = this.vy - gravity * dt;
+        const ballisticY = this.y + ballisticVy * dt;
+
+        // If the terrain drops out from under our natural trajectory, we catch air!
+        // Require a minimum speed to catch air, otherwise stick to ground.
+        if (terrainH < ballisticY - 0.1 && this.speed > 3.0) {
+          this.grounded = false;
+          this.vy = ballisticVy;
+          this.y = ballisticY;
+        } else {
+          // Stick to the ground and calculate our upward/downward velocity
+          this.vy = (terrainH - this.y) / dt;
+          this.y = terrainH;
+        }
       }
     } else {
       // Air physics
@@ -312,6 +325,9 @@ export class PlayerSkier {
         this.y = terrainH;
         this.vy = 0;
         this.grounded = true;
+        
+        // Optional: on hard landings we could bleed some forward speed
+        // this.vx *= 0.95; this.vz *= 0.95;
       }
     }
 
@@ -527,12 +543,13 @@ export class PlayerSkier {
   _onKeyDown(e) {
     if (e.target.tagName && e.target.tagName.toLowerCase() === 'input') return;
     switch (e.key) {
-      case 'ArrowLeft':    this._keys.left = true; break;
-      case 'ArrowRight':   this._keys.right = true; break;
-      case 'ArrowUp':      this._keys.forward = true; break;
-      case 'ArrowDown':    this._keys.brake = true; break;
+      case 'ArrowLeft':    e.preventDefault(); this._keys.left = true; break;
+      case 'ArrowRight':   e.preventDefault(); this._keys.right = true; break;
+      case 'ArrowUp':      e.preventDefault(); this._keys.forward = true; break;
+      case 'ArrowDown':    e.preventDefault(); this._keys.brake = true; break;
       case 'w': case 'W':  this._keys.lookUp = true; break;
       case 's': case 'S':  this._keys.lookDown = true; break;
+      case ' ':            e.preventDefault(); this._keys.jump = true; break;
     }
   }
 
@@ -544,6 +561,7 @@ export class PlayerSkier {
       case 'ArrowDown':    this._keys.brake = false; break;
       case 'w': case 'W':  this._keys.lookUp = false; break;
       case 's': case 'S':  this._keys.lookDown = false; break;
+      case ' ':            this._keys.jump = false; break;
     }
   }
 

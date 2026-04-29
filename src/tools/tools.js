@@ -304,6 +304,86 @@ export const TOOLS = {
     },
   },
 
+  jump: {
+    name: 'Ski Jump',
+    icon: '🚀',
+    color: '#f43f5e',
+    cursor: 'crosshair',
+    isBrush: true,
+    _startX: null,
+    _startZ: null,
+    _startH: null,
+    apply(heightmap, res, cx, cz, radius, strength, isStart) {
+      const ci = Math.round(cz) * res + Math.round(cx);
+
+      if (isStart || this._startX === null) {
+        this._startX = cx;
+        this._startZ = cz;
+        this._startH = heightmap[ci] ?? 0;
+      }
+
+      const dirX = cx - this._startX;
+      const dirZ = cz - this._startZ;
+      const dirLen = Math.sqrt(dirX * dirX + dirZ * dirZ);
+
+      if (dirLen < 1.0) return;
+
+      const ndx = dirX / dirLen;
+      const ndz = dirZ / dirLen;
+      const perpX = -ndz;
+      const perpZ = ndx;
+
+      const currentH = heightmap[ci] ?? 0;
+
+      applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+        const x = i % res;
+        const z = Math.floor(i / res);
+
+        const px = x - this._startX;
+        const pz = z - this._startZ;
+
+        const along = px * ndx + pz * ndz;
+        const across = px * perpX + pz * perpZ;
+
+        // Normalized cross-section position: -1 to 1 across the jump width
+        const crossT = across / radius;
+
+        if (Math.abs(crossT) > 1.2) return;
+
+        // Create a flat surface that drops off smoothly at the edges
+        let crossFalloff = 1.0;
+        const flatWidth = 0.5;
+        if (Math.abs(crossT) > flatWidth) {
+           const edgeT = (Math.abs(crossT) - flatWidth) / (1.0 - flatWidth);
+           // Smoothstep for the steep dropoff
+           crossFalloff = 1.0 - (edgeT * edgeT * (3 - 2 * edgeT));
+        }
+        if (crossFalloff <= 0) return;
+
+        // We want the kicker to form along the drag line (from 0 to dirLen)
+        if (along < -radius) return;
+        
+        let t = Math.max(0, Math.min(1, along / dirLen));
+
+        // The base slope of the jump (straight line from start to end)
+        const baseSlopeH = this._startH + t * (currentH - this._startH);
+
+        // The kicker curve: dips slightly, then curves up exponentially
+        // We use strength to define the max height of the kicker lip
+        const kickerLipH = strength * 25.0; 
+        
+        // A simple polynomial for the kicker lip: y = 2*t^3 - t
+        // Creates a slight swoop down before kicking up hard at t=1
+        const curve = 2.0 * Math.pow(t, 3) - 1.0 * t;
+
+        const targetH = baseSlopeH + Math.max(0, curve) * kickerLipH + Math.min(0, curve) * kickerLipH * 0.3;
+
+        // Blend the terrain strongly into the flat kicker profile
+        heightmap[i] += (targetH - heightmap[i]) * falloff * crossFalloff * 0.5;
+      });
+    },
+  },
+
   halfpipe: {
     name: 'Half Pipe',
     icon: '🛹',
