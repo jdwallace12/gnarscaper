@@ -481,7 +481,7 @@ export class PlayerSkier {
 
     // Frame-rate independent smoothed movement tracking
     // Time constant ~0.5s — responsive enough to track direction changes, smooth enough to filter jitter
-    const moveSmooth = 1 - Math.pow(0.005, frameDt);
+    const moveSmooth = 1 - Math.pow(0.001, frameDt);
     this._smoothTravelX += (dx - this._smoothTravelX) * moveSmooth;
     this._smoothTravelZ += (dz - this._smoothTravelZ) * moveSmooth;
 
@@ -493,7 +493,7 @@ export class PlayerSkier {
       while (diff < -Math.PI) diff += Math.PI * 2;
       while (diff > Math.PI) diff -= Math.PI * 2;
       // Time constant ~2.5s — very cinematic, lazy camera that never snaps during turns
-      const headingSmooth = 1 - Math.pow(0.15, frameDt);
+      const headingSmooth = 1 - Math.pow(0.01, frameDt);
       this.cameraHeading += diff * headingSmooth;
     }
 
@@ -509,13 +509,13 @@ export class PlayerSkier {
 
     // Frame-rate independent vertical smoothing — time constant ~1.8s prevents Y-axis jumpiness
     if (this._smoothCamY === undefined) this._smoothCamY = camY;
-    const ySmooth = 1 - Math.pow(0.08, frameDt);
+    const ySmooth = 1 - Math.pow(0.01, frameDt);
     this._smoothCamY += (camY - this._smoothCamY) * ySmooth;
 
     // Also smooth the lookAt Y to prevent vertical jitter in the focus point
     const lookY = h + 1.5 + this.cameraPitch * 8;
     if (this._smoothLookY === undefined) this._smoothLookY = lookY;
-    const lookYSmooth = 1 - Math.pow(0.04, frameDt);
+    const lookYSmooth = 1 - Math.pow(0.005, frameDt);
     this._smoothLookY += (lookY - this._smoothLookY) * lookYSmooth;
 
     this._camPosVec.set(camX, this._smoothCamY, camZ);
