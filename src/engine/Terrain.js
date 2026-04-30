@@ -71,6 +71,8 @@ export class Terrain {
       }
       pos.needsUpdate = true;
       this.geometry.computeVertexNormals();
+      this.geometry.computeBoundingBox();
+      this.geometry.computeBoundingSphere();
     }
     
     if (colors) {
