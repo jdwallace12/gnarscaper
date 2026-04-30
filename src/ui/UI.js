@@ -62,21 +62,35 @@ export class UI {
     toolLabel.textContent = 'Tools';
     sidebar.appendChild(toolLabel);
 
-    const toolGrid = document.createElement('div');
-    toolGrid.className = 'tool-grid';
-    const toolKeys = Object.keys(TOOLS);
-    toolKeys.forEach((key, idx) => {
-      const t = TOOLS[key];
-      const btn = document.createElement('button');
-      btn.className = 'tool-btn' + (key === this.activeToolKey ? ' active' : '');
-      btn.dataset.tool = key;
-      btn.innerHTML = `<span class="tool-icon">${t.icon}</span><span class="tool-name">${t.name}</span>`;
-      btn.style.setProperty('--tool-color', t.color);
-      btn.title = `${t.name} (${idx + 1})`;
-      btn.addEventListener('click', () => this._selectTool(key));
-      toolGrid.appendChild(btn);
+    // Group tools by category
+    const categories = ['Mountains', 'Skiing', 'Nature', 'Utility', 'Placement'];
+    
+    categories.forEach(category => {
+      const categoryTools = Object.entries(TOOLS).filter(([_, t]) => t.category === category);
+      if (categoryTools.length === 0) return;
+
+      // Category Header
+      const header = document.createElement('div');
+      header.className = 'tool-category-header';
+      header.innerHTML = category.toUpperCase();
+      sidebar.appendChild(header);
+
+      const toolGrid = document.createElement('div');
+      toolGrid.className = 'tool-grid';
+      
+      categoryTools.forEach(([key, t]) => {
+        const btn = document.createElement('button');
+        btn.className = 'tool-btn' + (key === this.activeToolKey ? ' active' : '');
+        btn.dataset.tool = key;
+        btn.innerHTML = `<span class="tool-icon">${t.icon}</span><span class="tool-name">${t.name}</span>`;
+        btn.style.setProperty('--tool-color', t.color);
+        btn.title = t.name;
+        btn.addEventListener('click', () => this._selectTool(key));
+        toolGrid.appendChild(btn);
+      });
+      
+      sidebar.appendChild(toolGrid);
     });
-    sidebar.appendChild(toolGrid);
 
     // Ski Mode Button (right under tools)
     const skiBtn = document.createElement('button');

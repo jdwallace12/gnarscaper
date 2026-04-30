@@ -12,6 +12,7 @@ export const TOOLS = {
     color: '#4ade80',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Mountains',
     apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount = 0.5) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
         const x = i % res;
@@ -29,6 +30,7 @@ export const TOOLS = {
     color: '#86efac',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Mountains',
     apply(heightmap, res, cx, cz, radius, strength) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
         // Smooth bell-curve dome: raise terrain toward a rounded peak
@@ -45,6 +47,7 @@ export const TOOLS = {
     color: '#d946ef',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Mountains',
     apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount = 0.5) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
         const x = i % res;
@@ -63,6 +66,7 @@ export const TOOLS = {
     color: '#e2e8f0',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Mountains',
     apply(heightmap, res, cx, cz, radius, strength) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
         // Flat bottom with aggressive steep sides, forming a U-shaped chute.
@@ -73,12 +77,48 @@ export const TOOLS = {
     },
   },
 
+  spires: {
+    name: 'Spires',
+    icon: '🌵',
+    color: '#ea580c',
+    cursor: 'crosshair',
+    isBrush: true,
+    category: 'Nature',
+    apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount = 0.5) {
+      applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+        const x = i % res;
+        const z = Math.floor(i / res);
+        
+        // Very high frequency noise to isolate thin pillars
+        const n = fbm(x * 0.45, z * 0.45, 4, 2.2, 0.5) * 0.5 + 0.5; // 0..1
+        
+        // Threshold the noise to create separate spires
+        if (n > 0.65) {
+          // Normalize the spire intensity
+          const spireIntensity = (n - 0.65) / 0.35;
+          // Apply a sharp power to make them thin and vertical
+          const spireShape = Math.pow(spireIntensity, 2.5);
+          
+          let h = strength * radius * 1.8 * falloff * spireShape;
+          
+          // Bryce Canyon "layered" effect: 
+          // Quantize the vertical growth into discrete sedimentary bands
+          const layerSize = 1.0;
+          h = Math.floor(h / layerSize) * layerSize;
+          
+          heightmap[i] += h;
+        }
+      });
+    },
+  },
+
   cliff: {
     name: 'Cliff Band',
     icon: '🧗',
     color: '#71717a',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Mountains',
     apply(heightmap, res, cx, cz, radius, strength) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
         const stepSize = 10.0;
@@ -115,6 +155,7 @@ export const TOOLS = {
     color: '#60a5fa',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Utility',
     apply(heightmap, res, cx, cz, radius, strength) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
         heightmap[i] -= strength * falloff;
@@ -128,6 +169,7 @@ export const TOOLS = {
     color: '#a78bfa',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Mountains',
     apply(heightmap, res, cx, cz, radius, strength) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
         // Flat bottom bowl: carves the sides more evenly 
@@ -144,6 +186,7 @@ export const TOOLS = {
     color: '#c084fc',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Utility',
     apply(heightmap, res, cx, cz, radius, strength) {
       // We need a copy to read from while writing
       const copy = new Float32Array(heightmap);
@@ -172,6 +215,7 @@ export const TOOLS = {
     color: '#a78bfa',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Utility',
     apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount = 0.5) {
       // Add fBm noise to make terrain look more organic and rough
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
@@ -195,6 +239,7 @@ export const TOOLS = {
     color: '#78716c',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Utility',
     apply(heightmap, res, cx, cz, radius, strength) {
       // Erosion: steeper areas get carved more, material flows downhill
       // Read from a copy to avoid feedback loops within a single pass
@@ -244,6 +289,7 @@ export const TOOLS = {
     color: '#fbbf24',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Utility',
     _targetHeight: null,
     apply(heightmap, res, cx, cz, radius, strength, isStart) {
       if (isStart || this._targetHeight === null) {
@@ -263,6 +309,7 @@ export const TOOLS = {
     color: '#f97316',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Skiing',
     _startX: null,
     _startZ: null,
     _startH: null,
@@ -310,6 +357,7 @@ export const TOOLS = {
     color: '#f43f5e',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Skiing',
     _startX: null,
     _startZ: null,
     _startH: null,
@@ -390,6 +438,7 @@ export const TOOLS = {
     color: '#38bdf8',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Skiing',
     _targetHeight: null,
     apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount, snowmap) {
       const ci = Math.round(cz) * res + Math.round(cx);
@@ -426,6 +475,7 @@ export const TOOLS = {
     color: '#06b6d4',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Skiing',
     _startX: null,
     _startZ: null,
     _startH: null,
@@ -507,6 +557,7 @@ export const TOOLS = {
     color: '#f59e0b',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Mountains',
     _startX: null,
     _startZ: null,
     _startH: null,
@@ -579,6 +630,7 @@ export const TOOLS = {
     color: '#a3a3a3',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Mountains',
     _targetHeight: null,
     apply(heightmap, res, cx, cz, radius, strength, isStart) {
       if (isStart || this._targetHeight === null) {
@@ -613,6 +665,7 @@ export const TOOLS = {
     color: '#34d399',
     cursor: 'crosshair',
     isBrush: false,  // handled specially in main.js
+    category: 'Nature',
     isTree: true,
     apply() { /* no-op — tree placement handled externally */ },
   },
@@ -623,6 +676,7 @@ export const TOOLS = {
     color: '#9ca3af',
     cursor: 'crosshair',
     isBrush: false,
+    category: 'Nature',
     isBoulder: true,
     apply() { /* no-op — handled externally */ },
   },
@@ -633,6 +687,7 @@ export const TOOLS = {
     color: '#ef4444',
     cursor: 'crosshair',
     isBrush: false,
+    category: 'Utility',
     isDemolish: true,
     apply() { /* no-op — handled externally */ },
   },
@@ -643,6 +698,7 @@ export const TOOLS = {
     color: '#e63946',
     cursor: 'crosshair',
     isBrush: false,
+    category: 'Placement',
     isSkier: true,
     apply() { /* no-op — skier placement handled externally */ },
   },
@@ -653,6 +709,7 @@ export const TOOLS = {
     color: '#3b82f6',
     cursor: 'crosshair',
     isBrush: false,
+    category: 'Placement',
     isChairlift: true,
     apply() { /* no-op — handled externally */ },
   },
@@ -663,6 +720,7 @@ export const TOOLS = {
     color: '#a5f3fc',
     cursor: 'crosshair',
     isBrush: true,
+    category: 'Nature',
     isSnowBrush: true,
     apply(snowmap, res, cx, cz, radius, strength) {
       applyBrush(snowmap, res, cx, cz, radius, (i, falloff) => {
