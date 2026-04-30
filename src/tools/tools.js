@@ -384,6 +384,42 @@ export const TOOLS = {
     },
   },
 
+  ski_trail: {
+    name: 'Ski Trail',
+    icon: '🎿',
+    color: '#38bdf8',
+    cursor: 'crosshair',
+    isBrush: true,
+    _targetHeight: null,
+    apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount, snowmap) {
+      const ci = Math.round(cz) * res + Math.round(cx);
+      const localH = heightmap[ci] ?? 0;
+
+      if (isStart || this._targetHeight === null) {
+        this._targetHeight = localH;
+      }
+      
+      // Moving average follows the slope but filters out sharp bumps
+      this._targetHeight += (localH - this._targetHeight) * 0.15;
+      
+      // Subtract a small offset so it "carves" into the terrain
+      const target = this._targetHeight - 1.0; 
+      
+      applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+        // 1. Smooth/Carve terrain
+        // We pull terrain DOWN to the target more aggressively than we pull it up
+        const diff = target - heightmap[i];
+        const weight = diff < 0 ? 0.5 : 0.2; 
+        heightmap[i] += diff * falloff * strength * weight;
+        
+        // 2. Add snow to the snowmap
+        if (snowmap) {
+          snowmap[i] = Math.max(snowmap[i], Math.min(1.0, falloff * 1.5));
+        }
+      });
+    },
+  },
+
   halfpipe: {
     name: 'Half Pipe',
     icon: '🛹',
