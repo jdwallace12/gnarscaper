@@ -161,6 +161,14 @@ function doRedo() {
 
 function doReset() {
   history.push(terrain.snapshot());
+  
+  // Reset sea level to 0 and sync UI
+  seaLevel = 0;
+  if (ui.seaLevelSlider) {
+    ui.seaLevelSlider.value = 0;
+    ui.seaLevelSlider.nextElementSibling.innerText = '0';
+  }
+
   terrain.reset(seaLevel);
   trees.clear();
   boulders.clear();

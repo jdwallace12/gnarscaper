@@ -71,36 +71,16 @@ function _generateInitialTerrain() {
   const seedZ = Math.random() * 1000;
   const seedWarp = Math.random() * 1000;
 
-  // Generate 2-4 mountain peaks at random positions
-  const numPeaks = 2 + Math.floor(Math.random() * 3);
-  const peaks = [];
-  for (let p = 0; p < numPeaks; p++) {
-    peaks.push({
-      x: 0.25 + Math.random() * 0.5,  // Keep peaks away from edges
-      z: 0.25 + Math.random() * 0.5,
-      height: 0.6 + Math.random() * 0.4, // Height multiplier 0.6-1.0
-      radius: 0.2 + Math.random() * 0.15  // Falloff radius
-    });
-  }
+  // Choose a random diagonal direction for the mountain range
+  const isDiagonalA = Math.random() > 0.5;
+  const spineThickness = 0.35 + Math.random() * 0.1;
 
   for (let z = 0; z < res; z++) {
     for (let x = 0; x < res; x++) {
       const nx = x / res;
       const nz = z / res;
 
-      // ---- Mountain envelope from multiple peaks ----
-      let envelope = 0;
-      for (const peak of peaks) {
-        const dx = nx - peak.x;
-        const dz = nz - peak.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        const falloff = Math.max(0, 1 - dist / peak.radius);
-        // Smooth cubic falloff for natural mountain base shape
-        envelope = Math.max(envelope, falloff * falloff * (3 - 2 * falloff) * peak.height);
-      }
-
       // ---- Domain warping for organic distortion ----
-      // Warp the sample coordinates by noise, creating erosion-like patterns
       const warpScale = 3.0;
       const warpStrength = 0.15;
       const warpX = fbm((nx + seedWarp) * warpScale, (nz + seedWarp) * warpScale, 3, 2.0, 0.5);
@@ -108,28 +88,43 @@ function _generateInitialTerrain() {
       const wnx = nx + warpX * warpStrength;
       const wnz = nz + warpZ * warpStrength;
 
+      // ---- Continuous Mountain Spine ----
+      // Warp the distance calculation so the mountain range snakes naturally
+      const spineWarp = fbm(wnx * 2.0, wnz * 2.0, 4, 2.0, 0.5) * 0.3;
+      
+      let spineDist = 0;
+      if (isDiagonalA) {
+        spineDist = Math.abs(nx - nz + spineWarp) / Math.SQRT2;
+      } else {
+        spineDist = Math.abs(nx + nz - 1 + spineWarp) / Math.SQRT2;
+      }
+      
+      // Smooth falloff from the spine (1 at center, 0 at edges)
+      const falloff = Math.max(0, 1 - spineDist / spineThickness);
+      
+      // Modulate the spine height with noise to create distinct peaks and passes along the range
+      const peakNoise = fbm((wnx + seedX) * 2.5, (wnz + seedZ) * 2.5, 3, 2.0, 0.5);
+      const envelope = falloff * falloff * (3 - 2 * falloff) * (0.5 + peakNoise * 0.5);
+
       // ---- Layered noise ----
-      // Base terrain: broad rolling hills
       const baseScale = 3.5;
       const base = fbm((wnx + seedX) * baseScale, (wnz + seedZ) * baseScale, 6, 2.0, 0.5);
 
-      // Ridged noise: sharp mountain ridges and peaks
       const ridgeScale = 4.0;
       const ridged = ridgedNoise((wnx + seedX) * ridgeScale, (wnz + seedZ) * ridgeScale, 5, 2.2, 0.5);
 
-      // Fine detail: small bumps and roughness
       const detailScale = 12.0;
       const detail = fbm((wnx + seedX) * detailScale, (wnz + seedZ) * detailScale, 4, 2.0, 0.45);
 
-      // ---- Combine layers ----
-      // Blend between smooth base and sharp ridges based on elevation
-      // Higher areas get more ridged features, lower areas stay smooth
       const ridgeBlend = envelope * 0.7 + 0.3;
       const mainNoise = base * (1 - ridgeBlend) + ridged * ridgeBlend;
 
+      // Base terrain: higher average elevation with more amplitude for rolling green hills
+      const baseTerrainHeight = (base + 0.3) * 40.0;
+      
       // Scale height: taller mountains with dramatic relief
-      const maxHeight = 130;
-      let h = envelope * maxHeight * (0.5 + mainNoise * 0.5);
+      const maxHeight = 180;
+      let h = baseTerrainHeight + envelope * maxHeight * (0.5 + mainNoise * 0.5);
 
       // Add fine detail scaled by elevation (more detail at higher elevation)
       h += detail * 4.0 * Math.max(0.2, envelope);
