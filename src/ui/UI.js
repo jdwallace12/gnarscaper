@@ -336,15 +336,14 @@ export class UI {
     const hint = document.createElement('div');
     hint.className = 'hint';
     hint.innerHTML = `
-      <b>Camera Navigation</b><br>
-      • <b>Right Drag:</b> Pan<br>
-      • <b>Alt/Cmd + Left Drag:</b> Rotate<br>
-      • <b>Scroll Wheel:</b> Zoom<br>
-      • <b>Arrows / W / S:</b> Keyboard Pan<br><br>
-      <b>Building & Tools</b><br>
-      • <b>Chairlift:</b> Click once for base, again for top<br>
-      • <b>Shortcuts:</b> 1-9 Tools · [ ] Size · Cmd+[ ] Strength · Shift+[ ] Noise<br>
-      • <b>System:</b> Ctrl+Z Undo · Ctrl+S Save
+      <b>Camera Controls</b><br>
+      • <b>Right Click Drag:</b> Pan Camera<br>
+      • <b>Left Click Drag:</b> Rotate View (Alt/Cmd)<br>
+      • <b>Scroll Wheel:</b> Zoom In/Out<br>
+      • <b>Arrow Keys:</b> Pan View (Shift for slow)<br><br>
+      <b>Editor Tips</b><br>
+      • <b>Chairlifts:</b> Click once for start, again for end<br>
+      • <b>Ski Mode:</b> Drop a skier to test your mountain!
     `;
     sidebar.appendChild(hint);
   }
