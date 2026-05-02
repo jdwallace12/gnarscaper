@@ -31,11 +31,13 @@ export const TOOLS = {
     cursor: 'crosshair',
     isBrush: true,
     category: 'Mountains',
-    apply(heightmap, res, cx, cz, radius, strength) {
+    apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount = 0.5) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
-        // Smooth bell-curve dome: raise terrain toward a rounded peak
-        // The target height is strength-based at the center, tapering with falloff
-        const targetLift = strength * falloff * falloff; // squared falloff = rounder dome
+        const x = i % res;
+        const z = Math.floor(i / res);
+        // Add subtle organic texture to hills
+        const noise = fbm(x * 0.08, z * 0.08, 2, 2.0, 0.5) * 0.5 + 0.5;
+        const targetLift = strength * Math.pow(falloff, 2) * ((1.0 - noiseAmount * 0.4) + (noise * noiseAmount * 0.8));
         heightmap[i] += targetLift * 0.4;
       });
     },
@@ -170,12 +172,15 @@ export const TOOLS = {
     cursor: 'crosshair',
     isBrush: true,
     category: 'Mountains',
-    apply(heightmap, res, cx, cz, radius, strength) {
+    apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount = 0.5) {
       applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
-        // Flat bottom bowl: carves the sides more evenly 
-        // without digging a deep sharp hole in the center.
+        const x = i % res;
+        const z = Math.floor(i / res);
+        // Add noise to the bowl floor and rim
+        const noise = fbm(x * 0.1, z * 0.1, 2, 2.0, 0.5) * 0.5 + 0.5;
         const flatFalloff = Math.min(1.0, falloff * 1.8);
-        heightmap[i] -= strength * flatFalloff * 0.6;
+        const effect = strength * flatFalloff * 0.6 * ((1.0 - noiseAmount * 0.3) + (noise * noiseAmount * 0.6));
+        heightmap[i] -= effect;
       });
     },
   },
@@ -561,7 +566,7 @@ export const TOOLS = {
     _startX: null,
     _startZ: null,
     _startH: null,
-    apply(heightmap, res, cx, cz, radius, strength, isStart) {
+    apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount = 0.5) {
       const ci = Math.round(cz) * res + Math.round(cx);
 
       // Capture the start of the ridge
@@ -603,20 +608,20 @@ export const TOOLS = {
         const crossT = Math.max(-1, Math.min(1, across / radius));
 
         // Ridge profile: raised spine at center, sloping down to sides
-        // cos(crossT * π) goes from -1 (edges) to +1 (center)
-        // We want the center high and edges at natural terrain level
         const ridgeProfile = (Math.cos(crossT * Math.PI) + 1) * 0.5; // 0 at edges, 1 at center
-
-        // Sharp spine: square the profile for a more defined ridge
         const sharpProfile = ridgeProfile * ridgeProfile;
 
         // Graded height along the drag direction
         const t = along / dirLen;
         const gradedH = this._startH + t * (currentH - this._startH);
 
+        // Add jagged noise to the ridge spine based on the noise slider
+        const ridgeNoise = fbm(x * 0.15, z * 0.15, 3, 2.0, 0.5) * 0.5 + 0.5;
+        const noiseMod = (1.0 - noiseAmount * 0.6) + (ridgeNoise * noiseAmount * 1.2);
+
         // Ridge height scales with strength
         const ridgeHeight = strength * 4.0;
-        const targetH = gradedH + sharpProfile * ridgeHeight;
+        const targetH = gradedH + sharpProfile * ridgeHeight * noiseMod;
 
         // Blend toward the target shape
         heightmap[i] += (targetH - heightmap[i]) * falloff * 0.3;

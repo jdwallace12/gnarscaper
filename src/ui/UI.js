@@ -73,6 +73,12 @@ export class UI {
 
     // Group tools by category
     const categories = ['Skiing', 'Mountains', 'Utility', 'Features', 'Nature'];
+    this.orderedToolKeys = [];
+    
+    // Define all available shortcut keys in order
+    const numberKeys = ['1','2','3','4','5','6','7','8','9','0'];
+    const letterKeys = ['Q','E','R','T','Y','U','I','O','P','A','D','F','H','J','K','L'];
+    this.allShortcutKeys = [...numberKeys, ...letterKeys];
     
     categories.forEach(category => {
       const categoryTools = Object.entries(TOOLS).filter(([_, t]) => t.category === category);
@@ -88,12 +94,17 @@ export class UI {
       toolGrid.className = 'tool-grid';
       
       categoryTools.forEach(([key, t]) => {
+        const shortcutIdx = this.orderedToolKeys.length;
+        this.orderedToolKeys.push(key);
+        
+        const shortcutKey = shortcutIdx < this.allShortcutKeys.length ? this.allShortcutKeys[shortcutIdx] : '';
+        
         const btn = document.createElement('button');
         btn.className = 'tool-btn' + (key === this.activeToolKey ? ' active' : '');
         btn.dataset.tool = key;
         btn.innerHTML = `<span class="tool-icon">${t.icon}</span><span class="tool-name">${t.name}</span>`;
         btn.style.setProperty('--tool-color', t.color);
-        btn.title = t.name;
+        btn.title = `${t.name} ${shortcutKey ? `(${shortcutKey})` : ''}`;
         btn.addEventListener('click', () => this._selectTool(key));
         toolGrid.appendChild(btn);
       });
@@ -163,7 +174,7 @@ export class UI {
     wireframeLabel.style.justifyContent = 'space-between';
     wireframeLabel.style.width = '100%';
     wireframeLabel.style.cursor = 'pointer';
-    wireframeLabel.innerHTML = '<span>Show Grid</span>';
+    wireframeLabel.innerHTML = '<span>Show Grid <kbd style="margin-left:8px; opacity:0.6;">Cmd+G</kbd></span>';
     this.wireframeCheckbox = document.createElement('input');
     this.wireframeCheckbox.type = 'checkbox';
     this.wireframeCheckbox.addEventListener('change', (e) => {
@@ -402,14 +413,19 @@ export class UI {
   }
 
   _bindKeys() {
-    const toolKeys = Object.keys(TOOLS);
     window.addEventListener('keydown', (e) => {
-      // Number keys 1-9, plus 0 for tool 10
-      let num = parseInt(e.key);
-      if (num === 0) num = 10;
-      if (!isNaN(num) && num >= 1 && num <= toolKeys.length) {
-        this._selectTool(toolKeys[num - 1]);
-        return;
+      if (e.target.tagName && e.target.tagName.toLowerCase() === 'input') return;
+
+      // Handle tool shortcuts (Number keys and specific Letter keys)
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const key = e.key.toUpperCase();
+        const idx = this.allShortcutKeys.indexOf(key);
+        
+        if (idx !== -1 && idx < this.orderedToolKeys.length) {
+          e.preventDefault();
+          this._selectTool(this.orderedToolKeys[idx]);
+          return;
+        }
       }
       // Undo / Redo
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
