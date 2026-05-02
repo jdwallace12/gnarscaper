@@ -40,10 +40,18 @@ kbd {
   margin: 0 1px;
   vertical-align: middle;
 }
+html,
+body {
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   font-family: var(--font);
   background: #060a14;
   color: var(--text);
+}
+
+button, input, select, textarea {
+  font-family: inherit;
 }
 
 /* ---- Canvas ---- */
@@ -100,6 +108,7 @@ kbd {
 
 #topbar .slider-group label {
   white-space: nowrap;
+  font-family: var(--font);
   font-size: 0.75rem;
   color: var(--text-dim);
   font-weight: 600;
