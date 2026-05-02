@@ -35,11 +35,20 @@ export class UI {
     topbar.id = 'topbar';
     document.body.appendChild(topbar);
 
-    const topbarSliders = document.createElement('div');
-    topbarSliders.style.display = 'flex';
-    topbarSliders.style.flexDirection = 'row';
-    topbarSliders.style.gap = '32px';
-    topbar.appendChild(topbarSliders);
+    // Actions container (right side)
+    const topbarActions = document.createElement('div');
+    topbarActions.id = 'topbar-actions';
+    topbar.appendChild(topbarActions);
+
+    // Ski Mode Button
+    const skiBtn = document.createElement('button');
+    skiBtn.className = 'ski-mode-btn';
+    skiBtn.innerHTML = '🎿 Ski Mode';
+    skiBtn.title = 'Enter 3rd person skiing! (ESC to exit)';
+    skiBtn.addEventListener('click', () => {
+      if (this.callbacks.onToggleSkierMode) this.callbacks.onToggleSkierMode();
+    });
+    topbarActions.appendChild(skiBtn);
 
     // Title
     const title = document.createElement('div');
@@ -50,7 +59,7 @@ export class UI {
     // Subtitle
     const sub = document.createElement('div');
     sub.className = 'sidebar-subtitle';
-    sub.textContent = 'Terrain Sculptor';
+    sub.textContent = 'Terrain Sculptor and Ski Simulator';
     sidebar.appendChild(sub);
 
     // Divider
@@ -63,7 +72,7 @@ export class UI {
     sidebar.appendChild(toolLabel);
 
     // Group tools by category
-    const categories = ['Mountains', 'Skiing', 'Nature', 'Utility', 'Placement'];
+    const categories = ['Skiing', 'Mountains', 'Utility', 'Features', 'Nature'];
     
     categories.forEach(category => {
       const categoryTools = Object.entries(TOOLS).filter(([_, t]) => t.category === category);
@@ -92,30 +101,26 @@ export class UI {
       sidebar.appendChild(toolGrid);
     });
 
-    // Ski Mode Button (right under tools)
-    const skiBtn = document.createElement('button');
-    skiBtn.className = 'ski-mode-btn';
-    skiBtn.innerHTML = '🎿 Ski Mode';
-    skiBtn.title = 'Enter 3rd person skiing! (ESC to exit)';
-    skiBtn.addEventListener('click', () => {
-      if (this.callbacks.onToggleSkierMode) this.callbacks.onToggleSkierMode();
-    });
-    sidebar.appendChild(skiBtn);
-
     sidebar.appendChild(this._divider());
 
     // Brush settings (in topbar)
+    const topbarSliders = document.createElement('div');
+    topbarSliders.style.display = 'flex';
+    topbarSliders.style.flexDirection = 'row';
+    topbarSliders.style.gap = '20px';
+    topbar.insertBefore(topbarSliders, topbar.firstChild);
+
     this.radiusSlider = this._slider(topbarSliders, 'Brush Size', 1, 100, 16, (v) => {
       this.callbacks.onBrushRadius(v);
-    }, 1, '<b>[</b> and <b>]</b>');
+    }, 1, '<kbd>[</kbd> and <kbd>]</kbd>');
 
     this.strengthSlider = this._slider(topbarSliders, 'Strength', 0.05, 2.0, 0.6, (v) => {
       this.callbacks.onBrushStrength(v);
-    }, 0.05, '<b>Cmd/Ctrl + [</b> and <b>]</b>');
+    }, 0.05, '<kbd>Cmd/Ctrl + [</kbd> and <kbd>]</kbd>');
 
     this.noiseSlider = this._slider(topbarSliders, 'Noise Level', 0.0, 1.0, 0.5, (v) => {
       this.callbacks.onNoiseLevel(v);
-    }, 0.05, '<b>Shift + [</b> and <b>]</b>');
+    }, 0.05, '<kbd>Shift + [</kbd> and <kbd>]</kbd>');
 
     // Tree settings (in sidebar)
     const brushLabel = document.createElement('div');
@@ -142,6 +147,13 @@ export class UI {
     this.seaLevelSlider = this._slider(sidebar, 'Sea Level', -10, 20, -1, (v) => {
       this.callbacks.onSeaLevel(v);
     }, 0.5);
+
+    sidebar.appendChild(this._divider());
+
+    const displayLabel = document.createElement('div');
+    displayLabel.className = 'section-label';
+    displayLabel.textContent = 'Display Settings';
+    sidebar.appendChild(displayLabel);
 
     // Wireframe Toggle
     const wireframeRow = document.createElement('div');
