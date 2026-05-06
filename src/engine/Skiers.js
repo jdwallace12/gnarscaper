@@ -46,6 +46,18 @@ export class Skiers {
 
     // Track map to allow skiers to seek fresh snow
     this.trackMap = new Uint8Array(terrain.resolution * terrain.resolution);
+    
+    // Shared snow powder particle pool for all NPCs
+    this._snowMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.35,
+      roughness: 1.0,
+      metalness: 0.0,
+    });
+    this._snowGeo = new THREE.IcosahedronGeometry(0.3, 0);
+    this._snowPool = [];
+    this._snowPoolSize = 600;
   }
 
   _updateSpatialHash() {
@@ -550,9 +562,26 @@ export class Skiers {
       // UNLESS the surface has been covered with the Snow Maker tool
       const snowIdx = ngz * res + ngx;
       const hasSnowPaint = this.terrain.snowmap[snowIdx] > 0.3;
-      if (terrainH < seaLevel + 37 && !hasSnowPaint) {
+      const isOnSnow = terrainH >= seaLevel + 37 || hasSnowPaint;
+      
+      if (!isOnSnow) {
         this._handleStop(s, chairlifts);
         continue;
+      }
+      
+      // Emit snow powder particles
+      if (s.grounded && s.speed > 1.0 && isOnSnow) {
+        s._snowTimer = (s._snowTimer || 0) + dt;
+        const emitInterval = Math.max(0.01, 0.06 - s.speed * 0.002);
+        while (s._snowTimer >= emitInterval) {
+          s._snowTimer -= emitInterval;
+          const turnIntensity = Math.abs(Math.sin(s.carvePhase || 0));
+          const turnMultiplier = 1 + turnIntensity * 1.5;
+          const count = Math.min(3, Math.floor((s.speed > 5 ? 2 : 1) * turnMultiplier));
+          for (let i = 0; i < count; i++) {
+            this._emitSnow(s, terrainH);
+          }
+        }
       }
 
       // Smoothly face direction of overall movement (velocity + carve)
@@ -586,6 +615,9 @@ export class Skiers {
     if (imCount > 0) {
       this.skierIM.instanceMatrix.needsUpdate = true;
     }
+    
+    // Update all shared snow particles
+    this._updateSnowParticles(dt);
   }
 
   /** Remove all skiers and trails */
@@ -625,6 +657,11 @@ export class Skiers {
     this.skiers = [];
     this.skierIM.count = 0;
     if (this.trackMap) this.trackMap.fill(0);
+    
+    for (const p of this._snowPool) {
+      this.group.remove(p.mesh);
+    }
+    this._snowPool = [];
   }
 
   get count() {
@@ -675,5 +712,99 @@ export class Skiers {
     }
 
     return BufferGeometryUtils.mergeGeometries(geos, true);
+  }
+
+  // ---- Snow Powder Particle System ----
+
+  _getSnowParticle() {
+    for (const p of this._snowPool) {
+      if (!p.active) {
+        p.active = true;
+        p.mesh.visible = true;
+        return p;
+      }
+    }
+    if (this._snowPool.length < this._snowPoolSize) {
+      const mesh = new THREE.Mesh(this._snowGeo, this._snowMat.clone());
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      this.group.add(mesh);
+      const p = { mesh, active: true, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 0, baseScale: 1 };
+      this._snowPool.push(p);
+      return p;
+    }
+    // Pool full, steal oldest
+    const oldest = this._snowPool[0];
+    oldest.active = true;
+    oldest.mesh.visible = true;
+    return oldest;
+  }
+
+  _emitSnow(s, snowY) {
+    const p = this._getSnowParticle();
+    const heading = s.mesh.rotation.y;
+    
+    const sideOffset = (Math.random() - 0.5) * 0.8;
+    const fwdOffset = (Math.random() - 0.5) * 0.6;
+    const sinH = Math.sin(heading);
+    const cosH = Math.cos(heading);
+    
+    p.mesh.position.set(
+      s.wx + cosH * sideOffset + sinH * fwdOffset,
+      snowY + 0.1 + Math.random() * 0.2,
+      s.wz - sinH * sideOffset + cosH * fwdOffset
+    );
+    
+    const turnIntensity = Math.abs(Math.sin(s.carvePhase || 0));
+    const turnInfluence = turnIntensity * 0.4; 
+    const speedFactor = Math.min(s.speed * 0.15, 3.0);
+    const spreadAngle = (Math.random() - 0.5) * Math.PI * 0.6;
+    const launchAngle = heading + Math.PI + spreadAngle + turnInfluence;
+    
+    p.vx = Math.sin(launchAngle) * speedFactor * (0.5 + Math.random() * 1.0);
+    p.vy = 0.5 + Math.random() * 2.0 * speedFactor + turnIntensity * 0.8;
+    p.vz = Math.cos(launchAngle) * speedFactor * (0.5 + Math.random() * 1.0);
+    
+    p.life = 0;
+    p.maxLife = 0.6 + Math.random() * 0.5;
+    p.baseScale = 0.3 + Math.random() * 0.7;
+    p.mesh.scale.setScalar(p.baseScale);
+    p.mesh.material.opacity = 0.35;
+    p.mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+  }
+
+  _updateSnowParticles(dt) {
+    const gravity = 3.0;
+    for (const p of this._snowPool) {
+      if (!p.active) continue;
+      
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        p.active = false;
+        p.mesh.visible = false;
+        continue;
+      }
+      
+      p.vx *= 0.95;
+      p.vz *= 0.95;
+      p.vy -= gravity * dt;
+      p.mesh.position.x += p.vx * dt;
+      p.mesh.position.y += p.vy * dt;
+      p.mesh.position.z += p.vz * dt;
+      p.mesh.rotation.y += 0.5 * dt;
+      p.mesh.rotation.z += 0.5 * dt;
+      
+      const terrainH = this.terrain.getInterpolatedHeight(p.mesh.position.x, p.mesh.position.z);
+      if (p.mesh.position.y < terrainH) {
+        p.mesh.position.y = terrainH;
+        p.vy = 0;
+        p.vx *= 0.5;
+        p.vz *= 0.5;
+      }
+      
+      const t = p.life / p.maxLife;
+      p.mesh.material.opacity = 0.35 * (1 - t);
+      p.mesh.scale.setScalar(p.baseScale * (1.0 + t * 1.5));
+    }
   }
 }
