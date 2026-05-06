@@ -74,6 +74,19 @@ export class PlayerSkier {
     this._splashPool = [];
     this._splashPoolSize = 80;
     this._splashTimer = 0;
+    
+    // Snow powder particles
+    this._snowMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.35,
+      roughness: 1.0,
+      metalness: 0.0,
+    });
+    this._snowPool = [];
+    this._snowPoolSize = 150;
+    this._snowTimer = 0;
+
     this._onWater = false;
 
     // Bind input handlers
@@ -176,6 +189,13 @@ export class PlayerSkier {
     }
     this._splashPool = [];
     this._splashParticles = [];
+    
+    // Clean up snow particles
+    for (const p of this._snowPool) {
+      this.group.remove(p.mesh);
+    }
+    this._snowPool = [];
+    
     this._onWater = false;
   }
 
@@ -381,6 +401,31 @@ export class PlayerSkier {
       this._splashTimer = 0;
       this._sinking = false;
       this._sinkTimer = 0;
+
+      if (this.grounded && this.speed > 1.0) {
+        // Check if we are actually on snow (height-based or painted snow)
+        const { gx, gz } = this.terrain.worldToGrid(this.wx, this.wz);
+        const isOnSnow = terrainH >= this.seaLevel + 57 || this.terrain.getSnowAmount(gx, gz) > 0.05;
+
+        if (isOnSnow) {
+          // Emit snow powder particles
+          this._snowTimer += dt;
+          const emitInterval = Math.max(0.005, 0.05 - this.speed * 0.002); // More particles, emit faster
+          while (this._snowTimer >= emitInterval) {
+            this._snowTimer -= emitInterval;
+            // When turning sharply (high angular velocity), kick up much more snow
+            const turnMultiplier = 1 + Math.abs(this.angularVelocity) * 1.5;
+            const count = Math.min(5, Math.floor((this.speed > 5 ? 2 : 1) * turnMultiplier));
+            for (let i = 0; i < count; i++) {
+              this._emitSnow(this.wx, terrainH, this.wz);
+            }
+          }
+        } else {
+          this._snowTimer = 0; // On grass or rock, no spray
+        }
+      } else {
+        this._snowTimer = 0;
+      }
     }
 
     if (this.grounded) {
@@ -542,6 +587,7 @@ export class PlayerSkier {
 
     // Update splash particles
     this._updateSplashParticles(dt);
+    this._updateSnowParticles(dt);
 
     // Trail
     const tp = this._trailPoints;
@@ -759,6 +805,120 @@ export class PlayerSkier {
         const shrink = 1 - (t - 0.6) / 0.4;
         p.mesh.scale.setScalar(p.mesh.scale.x * (0.95 + shrink * 0.05));
       }
+    }
+  }
+
+  // ---- Snow Powder Particle System ----
+
+  /** Get or create a snow particle from the pool */
+  _getSnowParticle() {
+    // Reuse an inactive particle
+    for (const p of this._snowPool) {
+      if (!p.active) {
+        p.active = true;
+        p.mesh.visible = true;
+        return p;
+      }
+    }
+    // Create a new one if pool not full
+    if (this._snowPool.length < this._snowPoolSize) {
+      // Use a larger, angular geometry for snow clouds
+      const geo = new THREE.IcosahedronGeometry(0.3, 0);
+      const mesh = new THREE.Mesh(geo, this._snowMat.clone());
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      this.group.add(mesh);
+      const p = { mesh, active: true, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 0, baseScale: 1 };
+      this._snowPool.push(p);
+      return p;
+    }
+    // Pool full, steal the oldest
+    const oldest = this._snowPool[0];
+    oldest.active = true;
+    oldest.mesh.visible = true;
+    return oldest;
+  }
+
+  /** Emit a single snow particle at the given world position */
+  _emitSnow(wx, snowY, wz) {
+    const p = this._getSnowParticle();
+    
+    // Offset sideways from skier center, wider spread for carving
+    const sideOffset = (Math.random() - 0.5) * 0.8;
+    const fwdOffset = (Math.random() - 0.5) * 0.6;
+    const sinH = Math.sin(this.heading);
+    const cosH = Math.cos(this.heading);
+    
+    p.mesh.position.set(
+      wx + cosH * sideOffset + sinH * fwdOffset,
+      snowY + 0.1 + Math.random() * 0.2,
+      wz - sinH * sideOffset + cosH * fwdOffset
+    );
+    
+    // Spray outward and upward — based heavily on turn rate
+    const turnInfluence = this.angularVelocity * 0.4; 
+    const speedFactor = Math.min(this.speed * 0.15, 3.0);
+    const spreadAngle = (Math.random() - 0.5) * Math.PI * 0.6;
+    const launchAngle = this.heading + Math.PI + spreadAngle + turnInfluence; // Spray backward and sideways
+    
+    p.vx = Math.sin(launchAngle) * speedFactor * (0.5 + Math.random() * 1.0);
+    p.vy = 0.5 + Math.random() * 2.0 * speedFactor + Math.abs(this.angularVelocity) * 0.8; // High upward spray on turns
+    p.vz = Math.cos(launchAngle) * speedFactor * (0.5 + Math.random() * 1.0);
+    
+    p.life = 0;
+    p.maxLife = 0.6 + Math.random() * 0.5; // 0.6–1.1 seconds (hangs in the air)
+    
+    // Randomize initial size
+    p.baseScale = 0.3 + Math.random() * 0.7;
+    p.mesh.scale.setScalar(p.baseScale);
+    p.mesh.material.opacity = 0.35;
+    
+    // Random rotation so they don't all look identical
+    p.mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+  }
+
+  /** Animate all active snow particles */
+  _updateSnowParticles(dt) {
+    const gravity = 3.0; // Very slow fall for light powder
+    for (const p of this._snowPool) {
+      if (!p.active) continue;
+      
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        p.active = false;
+        p.mesh.visible = false;
+        continue;
+      }
+      
+      // Air drag (horizontal)
+      p.vx *= 0.95;
+      p.vz *= 0.95;
+      
+      // Physics
+      p.vy -= gravity * dt;
+      p.mesh.position.x += p.vx * dt;
+      p.mesh.position.y += p.vy * dt;
+      p.mesh.position.z += p.vz * dt;
+      
+      // Slowly rotate
+      p.mesh.rotation.y += 0.5 * dt;
+      p.mesh.rotation.z += 0.5 * dt;
+      
+      const terrainH = this.terrain.getInterpolatedHeight(p.mesh.position.x, p.mesh.position.z);
+      // Don't go below ground level
+      if (p.mesh.position.y < terrainH) {
+        p.mesh.position.y = terrainH;
+        p.vy = 0;
+        p.vx *= 0.5;
+        p.vz *= 0.5;
+      }
+      
+      // Fade out
+      const t = p.life / p.maxLife;
+      p.mesh.material.opacity = 0.35 * (1 - t); // Linear fade
+      
+      // Expand significantly into a large cloud
+      p.mesh.scale.setScalar(p.baseScale * (1.0 + t * 1.5));
     }
   }
 

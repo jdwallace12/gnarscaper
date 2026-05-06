@@ -89,6 +89,12 @@ export class Terrain {
     return this.heightmap[gz * this.resolution + gx];
   }
 
+  getSnowAmount(gx, gz) {
+    if (gx < 0 || gx >= this.resolution || gz < 0 || gz >= this.resolution)
+      return 0;
+    return this.snowmap[gz * this.resolution + gx];
+  }
+
   setHeight(gx, gz, value) {
     if (gx < 0 || gx >= this.resolution || gz < 0 || gz >= this.resolution)
       return;
