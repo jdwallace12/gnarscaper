@@ -54,6 +54,7 @@ const snow = new Snow(400);
 const history = new History(50);
 const clouds = new Clouds(terrain);
 const playerSkier = new PlayerSkier(terrain);
+playerSkier.seaLevel = seaLevel;
 
 scene.add(terrain.mesh);
 scene.add(water.mesh);
@@ -98,6 +99,7 @@ const ui = new UI({
   onSeaLevel(v) {
     seaLevel = v;
     water.setSeaLevel(v);
+    playerSkier.seaLevel = v;
     terrain.updateMesh(seaLevel);
     trees.updatePositions(seaLevel);
     boulders.updatePositions(seaLevel);
@@ -296,6 +298,7 @@ function loadMapData(data) {
   ui.setBaseElevationSlider(currentBaseElevation);
   
   water.setSeaLevel(seaLevel);
+  playerSkier.seaLevel = seaLevel;
   
   // Restore Terrain through Worker to trigger geometry calculations
   terrain.restore({

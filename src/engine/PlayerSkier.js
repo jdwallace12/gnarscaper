@@ -60,6 +60,22 @@ export class PlayerSkier {
     this._skinMat = new THREE.MeshStandardMaterial({ color: 0xf4d4b0, roughness: 0.8 });
     this._skiMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.3, metalness: 0.2 }); // Yellow skis
 
+    // Water splash particles
+    this.seaLevel = -1;
+    this._splashParticles = [];
+    this._splashMat = new THREE.MeshStandardMaterial({
+      color: 0x4fc3f7,
+      transparent: true,
+      opacity: 0.7,
+      roughness: 0.1,
+      metalness: 0.3,
+    });
+    this._splashGeo = new THREE.SphereGeometry(0.06, 4, 4);
+    this._splashPool = [];
+    this._splashPoolSize = 80;
+    this._splashTimer = 0;
+    this._onWater = false;
+
     // Bind input handlers
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
@@ -153,6 +169,14 @@ export class PlayerSkier {
       this._trail = null;
     }
     this._trailPoints = [];
+
+    // Clean up splash particles
+    for (const p of this._splashPool) {
+      this.group.remove(p.mesh);
+    }
+    this._splashPool = [];
+    this._splashParticles = [];
+    this._onWater = false;
   }
 
   /**
@@ -198,8 +222,19 @@ export class PlayerSkier {
     const hD = this.terrain.getHeight(gx, Math.min(res - 1, gz + sampleR));
 
     const cellSize = size / (res - 1);
-    const gradX = (hR - hL) / (2 * sampleR * cellSize);
-    const gradZ = (hD - hU) / (2 * sampleR * cellSize);
+    let gradX = (hR - hL) / (2 * sampleR * cellSize);
+    let gradZ = (hD - hU) / (2 * sampleR * cellSize);
+
+    // Check if we're over water BEFORE applying gravity/steering
+    const rawTerrainH = this.terrain.getInterpolatedHeight(this.wx, this.wz);
+    const overWater = rawTerrainH <= this.seaLevel;
+
+    // On water the surface is flat — zero out terrain gradient so the skier
+    // doesn't get pushed around by the terrain shape underneath the water
+    if (overWater && this.grounded) {
+      gradX = 0;
+      gradZ = 0;
+    }
 
     // Apply gravity acceleration
     this.vx -= gradX * gravity * dt;
@@ -221,7 +256,8 @@ export class PlayerSkier {
 
     // Downhill alignment: gently rotate heading toward the fall line when not steering.
     // This prevents the skier from getting stuck sliding sideways on slopes.
-    if (!this._keys.left && !this._keys.right) {
+    // Skip on water — there is no fall line on a flat surface.
+    if (!this._keys.left && !this._keys.right && !overWater) {
       const gradMag = Math.sqrt(gradX * gradX + gradZ * gradZ);
       if (gradMag > 0.01) {
         // Fall line = steepest downhill direction
@@ -287,8 +323,65 @@ export class PlayerSkier {
     this.wx += this.vx * dt;
     this.wz += this.vz * dt;
 
-    // Terrain height at new position
-    const terrainH = this.terrain.getInterpolatedHeight(this.wx, this.wz);
+    // Terrain height at new position (re-sample after movement)
+    const terrainH = Math.max(this.terrain.getInterpolatedHeight(this.wx, this.wz), overWater ? this.seaLevel : -Infinity);
+
+    // Water detection: terrain at or below sea level means we're on water
+    // The skier planes over water — use sea level as the effective ground
+    this._onWater = this.grounded && this.terrain.getInterpolatedHeight(this.wx, this.wz) <= this.seaLevel;
+
+    // Once sinking has started, keep it going regardless of speed
+    if (this._sinking && this._onWater) {
+      this._sinkTimer = (this._sinkTimer || 0) + dt;
+      // Gently decelerate
+      this.vx *= 0.98;
+      this.vz *= 0.98;
+      // End the run after 2 seconds
+      if (this._sinkTimer > 2.0) {
+        this.active = false;
+        return false;
+      }
+      // Sink below water — accelerating descent
+      const sinkT = this._sinkTimer / 2.0; // 0→1 over 2 seconds
+      this.y = this.seaLevel - (sinkT * sinkT * 1.5);
+      // Splash bubbles while sinking
+      this._splashTimer += dt;
+      if (this._splashTimer >= 0.08) {
+        this._splashTimer -= 0.08;
+        this._emitSplash(this.wx, this.seaLevel, this.wz);
+      }
+      return true;
+    } else if (this._onWater && this.speed > 0.3) {
+      // 20 mph sink threshold: speed * 7.5 = mph, so 20 mph ≈ 2.67 internal speed
+      const sinkThreshold = 20 / 7.5;
+      if (this.speed < sinkThreshold) {
+        // Too slow to plane — start sinking!
+        this._sinking = true;
+        this._sinkTimer = 0;
+        return true;
+      }
+
+      // Planing on water — light drag
+      const waterDrag = 0.995;
+      this.vx *= waterDrag;
+      this.vz *= waterDrag;
+      this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
+
+      // Emit splash particles
+      this._splashTimer += dt;
+      const emitInterval = Math.max(0.01, 0.06 - this.speed * 0.003);
+      while (this._splashTimer >= emitInterval) {
+        this._splashTimer -= emitInterval;
+        const count = this.speed > 5 ? 3 : (this.speed > 2 ? 2 : 1);
+        for (let i = 0; i < count; i++) {
+          this._emitSplash(this.wx, this.seaLevel, this.wz);
+        }
+      }
+    } else {
+      this._splashTimer = 0;
+      this._sinking = false;
+      this._sinkTimer = 0;
+    }
 
     if (this.grounded) {
       // Manual Jump
@@ -447,6 +540,9 @@ export class PlayerSkier {
     this.mesh.rotation.z = lean;
     this.mesh.rotation.x = targetPitch;
 
+    // Update splash particles
+    this._updateSplashParticles(dt);
+
     // Trail
     const tp = this._trailPoints;
     const lastIdx = tp.length - 3;
@@ -562,6 +658,107 @@ export class PlayerSkier {
       case 'w': case 'W':  this._keys.lookUp = false; break;
       case 's': case 'S':  this._keys.lookDown = false; break;
       case ' ':            this._keys.jump = false; break;
+    }
+  }
+
+  // ---- Water Splash Particle System ----
+
+  /** Get or create a splash particle from the pool */
+  _getSplashParticle() {
+    // Reuse an inactive particle
+    for (const p of this._splashPool) {
+      if (!p.active) {
+        p.active = true;
+        p.mesh.visible = true;
+        return p;
+      }
+    }
+    // Create a new one if pool not full
+    if (this._splashPool.length < this._splashPoolSize) {
+      const mesh = new THREE.Mesh(this._splashGeo, this._splashMat.clone());
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      this.group.add(mesh);
+      const p = { mesh, active: true, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 0 };
+      this._splashPool.push(p);
+      return p;
+    }
+    // Pool full, steal the oldest
+    const oldest = this._splashPool[0];
+    oldest.active = true;
+    oldest.mesh.visible = true;
+    return oldest;
+  }
+
+  /** Emit a single splash particle at the given world position */
+  _emitSplash(wx, waterY, wz) {
+    const p = this._getSplashParticle();
+    
+    // Offset sideways from skier center (to the left/right ski)
+    const sideOffset = (Math.random() - 0.5) * 0.3;
+    const fwdOffset = (Math.random() - 0.5) * 0.4;
+    const sinH = Math.sin(this.heading);
+    const cosH = Math.cos(this.heading);
+    
+    p.mesh.position.set(
+      wx + cosH * sideOffset + sinH * fwdOffset,
+      waterY + 0.05 + Math.random() * 0.1,
+      wz - sinH * sideOffset + cosH * fwdOffset
+    );
+    
+    // Spray outward and upward — velocity based on skier speed
+    const speedFactor = Math.min(this.speed * 0.15, 2.5);
+    const spreadAngle = (Math.random() - 0.5) * Math.PI * 0.8;
+    const launchAngle = this.heading + Math.PI + spreadAngle; // Spray backward
+    
+    p.vx = Math.sin(launchAngle) * speedFactor * (0.5 + Math.random() * 0.5);
+    p.vy = 1.5 + Math.random() * 2.5 * speedFactor; // Upward spray
+    p.vz = Math.cos(launchAngle) * speedFactor * (0.5 + Math.random() * 0.5);
+    
+    p.life = 0;
+    p.maxLife = 0.4 + Math.random() * 0.4; // 0.4–0.8 seconds
+    
+    // Randomize size
+    const scale = 0.4 + Math.random() * 1.0;
+    p.mesh.scale.setScalar(scale);
+  }
+
+  /** Animate all active splash particles */
+  _updateSplashParticles(dt) {
+    const gravity = 12.0;
+    for (const p of this._splashPool) {
+      if (!p.active) continue;
+      
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        p.active = false;
+        p.mesh.visible = false;
+        continue;
+      }
+      
+      // Physics
+      p.vy -= gravity * dt;
+      p.mesh.position.x += p.vx * dt;
+      p.mesh.position.y += p.vy * dt;
+      p.mesh.position.z += p.vz * dt;
+      
+      // Don't go below water level
+      if (p.mesh.position.y < this.seaLevel) {
+        p.mesh.position.y = this.seaLevel;
+        p.vy = 0;
+        p.vx *= 0.8;
+        p.vz *= 0.8;
+      }
+      
+      // Fade out
+      const t = p.life / p.maxLife;
+      p.mesh.material.opacity = 0.7 * (1 - t * t); // Quadratic fade
+      
+      // Shrink slightly at end of life
+      if (t > 0.6) {
+        const shrink = 1 - (t - 0.6) / 0.4;
+        p.mesh.scale.setScalar(p.mesh.scale.x * (0.95 + shrink * 0.05));
+      }
     }
   }
 
