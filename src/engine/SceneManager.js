@@ -109,13 +109,16 @@ export class SceneManager {
 
   /** Enter 3rd-person skier camera mode */
   enterSkierMode() {
-    this._skierMode = true;
     this._currentLookAt = null; // Reset focus smoothing for new session
     this._forceSnapCamera = true; // Instantly snap behind the skier on the first frame
     
-    // Save current state for restoration
-    this._savedCamPos = this.camera.position.clone();
-    this._savedTarget = this.controls.target.clone();
+    // Save current state for restoration (only if we aren't already in skier mode)
+    if (!this._skierMode) {
+      this._savedCamPos = this.camera.position.clone();
+      this._savedTarget = this.controls.target.clone();
+    }
+    
+    this._skierMode = true;
 
     // Shadow Optimization: Shrink shadow frustum and center on player
     if (this.sun) {
@@ -134,8 +137,6 @@ export class SceneManager {
   exitSkierMode() {
     this._skierMode = false;
     this._currentLookAt = null;
-    
-
 
     // Restore shadow frustum
     if (this.sun) {
@@ -155,6 +156,7 @@ export class SceneManager {
     if (this._savedCamPos) {
       this.camera.position.copy(this._savedCamPos);
       this.controls.target.copy(this._savedTarget);
+      this.controls.update(); // Force OrbitControls to sync immediately
     }
   }
 
