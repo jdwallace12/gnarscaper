@@ -134,14 +134,10 @@ export class UI {
     }, 0.05, '<kbd>Shift + [</kbd> and <kbd>]</kbd>');
 
     // Tree settings (in sidebar)
-    const brushLabel = document.createElement('div');
-    brushLabel.className = 'section-label';
-    brushLabel.textContent = 'Tree Tool Options';
-    sidebar.appendChild(brushLabel);
-
-    this.treeDensitySlider = this._slider(sidebar, 'Tree Density', 1, 10, 5, (v) => {
+    this.treeDensitySlider = this._slider(sidebar, 'Boulder & Tree Density', 1, 10, 5, (v) => {
       this.callbacks.onTreeDensity(v);
     });
+    this.treeDensitySlider.parentElement.style.marginBottom = '15px';
 
     sidebar.appendChild(this._divider());
 

@@ -664,15 +664,20 @@ export const TOOLS = {
     },
   },
 
-  trees: {
-    name: 'Trees',
-    icon: '🌲',
-    color: '#34d399',
+  snowmaker: {
+    name: 'Snow Maker',
+    icon: '❄️',
+    color: '#a5f3fc',
     cursor: 'crosshair',
-    isBrush: false,  // handled specially in main.js
+    isBrush: true,
     category: 'Nature',
-    isTree: true,
-    apply() { /* no-op — tree placement handled externally */ },
+    isSnowBrush: true,
+    apply(snowmap, res, cx, cz, radius, strength) {
+      applyBrush(snowmap, res, cx, cz, radius, (i, falloff) => {
+        snowmap[i] += strength * falloff * 0.5;
+        if (snowmap[i] > 1.0) snowmap[i] = 1.0;
+      });
+    },
   },
 
   boulders: {
@@ -719,20 +724,15 @@ export const TOOLS = {
     apply() { /* no-op — handled externally */ },
   },
   
-  snowmaker: {
-    name: 'Snow Maker',
-    icon: '❄️',
-    color: '#a5f3fc',
+  trees: {
+    name: 'Trees',
+    icon: '🌲',
+    color: '#34d399',
     cursor: 'crosshair',
-    isBrush: true,
+    isBrush: false,  // handled specially in main.js
     category: 'Nature',
-    isSnowBrush: true,
-    apply(snowmap, res, cx, cz, radius, strength) {
-      applyBrush(snowmap, res, cx, cz, radius, (i, falloff) => {
-        snowmap[i] += strength * falloff * 0.5;
-        if (snowmap[i] > 1.0) snowmap[i] = 1.0;
-      });
-    },
+    isTree: true,
+    apply() { /* no-op — tree placement handled externally */ },
   },
 };
 
