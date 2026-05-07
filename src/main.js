@@ -27,7 +27,7 @@ import { PlayerSkier } from './engine/PlayerSkier.js';
 (async () => {
 
 // ---- State ----
-let seaLevel = -1;
+let seaLevel = 1;
 let currentBaseElevation = 0;
 let currentToolKey = 'raise';
 let treeDensity = 5;
@@ -165,11 +165,11 @@ function doRedo() {
 function doReset() {
   history.push(terrain.snapshot());
   
-  // Reset sea level to 0 and sync UI
-  seaLevel = 0;
+  // Reset sea level to 1 and sync UI
+  seaLevel = 1;
   if (ui.seaLevelSlider) {
-    ui.seaLevelSlider.value = 0;
-    ui.seaLevelSlider.nextElementSibling.innerText = '0';
+    ui.seaLevelSlider.value = 1;
+    ui.seaLevelSlider.nextElementSibling.innerText = '1';
   }
 
   terrain.reset(seaLevel);
@@ -292,7 +292,7 @@ function loadMapData(data) {
   history.push(terrain.snapshot()); // Save old state for undo
 
   // Restore Settings
-  seaLevel = data.seaLevel ?? -1;
+  seaLevel = data.seaLevel ?? 1;
   currentBaseElevation = data.baseElevation ?? 0;
   
   ui.setSeaLevelSlider(seaLevel);

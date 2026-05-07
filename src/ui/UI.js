@@ -151,7 +151,7 @@ export class UI {
       this.callbacks.onBaseElevation(v);
     }, 1);
 
-    this.seaLevelSlider = this._slider(sidebar, 'Sea Level', -10, 20, -1, (v) => {
+    this.seaLevelSlider = this._slider(sidebar, 'Sea Level', -10, 20, 1, (v) => {
       this.callbacks.onSeaLevel(v);
     }, 0.5);
 

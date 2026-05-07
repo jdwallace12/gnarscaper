@@ -30,9 +30,13 @@ function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0) {
   } else if (h < seaLevel - 1) {
     base.lerpColors(DEEP_WATER, SHALLOW, (h - (seaLevel - 4)) / 3);
   } else if (h < seaLevel + 0.5) {
-    base.lerpColors(SHALLOW, GRASS_LOW, (h - (seaLevel - 1)) / 1.5);
+    // Beach: transition from shallow water to sand
+    base.lerpColors(SHALLOW, SAND, (h - (seaLevel - 1)) / 1.5);
+  } else if (h < seaLevel + 2.5) {
+    // Beach: transition from sand to low grass
+    base.lerpColors(SAND, GRASS_LOW, (h - (seaLevel + 0.5)) / 2.0);
   } else if (h < seaLevel + 18) {
-    base.lerpColors(GRASS_LOW, GRASS_HIGH, (h - (seaLevel + 0.5)) / 17.5);
+    base.lerpColors(GRASS_LOW, GRASS_HIGH, (h - (seaLevel + 2.5)) / 15.5);
   } else if (h < seaLevel + 28) {
     base.lerpColors(GRASS_HIGH, ALPINE_MEADOW, (h - (seaLevel + 18)) / 10);
   } else if (h < seaLevel + 37) {

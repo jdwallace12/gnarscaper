@@ -44,15 +44,15 @@ export class Water {
    */
   static waveHeight(wx, wz, time) {
     // Layer 1: Large rolling swells
-    const w1 = Math.sin(wx * 0.05 + time * 0.9) *
-               Math.cos(wz * 0.04 + time * 0.7) * 1.8;
+    const w1 = Math.sin(wx * 0.05 + time * 0.45) *
+               Math.cos(wz * 0.04 + time * 0.35) * 1.8;
 
     // Layer 2: Medium chop at an angle
-    const w2 = Math.sin((wx * 0.09 + wz * 0.07) + time * 1.5) * 0.7;
+    const w2 = Math.sin((wx * 0.09 + wz * 0.07) + time * 0.75) * 0.7;
 
     // Layer 3: Small ripples
-    const w3 = Math.sin(wx * 0.18 + time * 2.3) *
-               Math.cos(wz * 0.20 + time * 1.9) * 0.3;
+    const w3 = Math.sin(wx * 0.18 + time * 1.15) *
+               Math.cos(wz * 0.20 + time * 0.95) * 0.3;
 
     return w1 + w2 + w3;
   }
