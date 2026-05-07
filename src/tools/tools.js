@@ -593,6 +593,68 @@ export const TOOLS = {
     }
   },
 
+  spine: {
+    name: 'Spine',
+    icon: '🦴',
+    color: '#a8a29e',
+    cursor: 'crosshair',
+    isBrush: true,
+    category: 'Features',
+    _startX: null,
+    _startZ: null,
+    _dirX: 0,
+    _dirZ: 1,
+    _locked: false,
+    _startX: null,
+    _startZ: null,
+    apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount, snowmap) {
+      if (isStart) {
+        this._startX = cx;
+        this._startZ = cz;
+        this._locked = false;
+      }
+
+      // Lock direction once we have enough drag distance
+      if (!this._locked && this._startX !== null) {
+        const dx = cx - this._startX;
+        const dz = cz - this._startZ;
+        const len = Math.sqrt(dx * dx + dz * dz);
+        if (len > 4) {
+          // Ridges run along drag direction, wave is perpendicular
+          this._dirX = -dz / len;
+          this._dirZ = dx / len;
+          this._locked = true;
+        }
+      }
+
+      // Perpendicular to the fall line = across the slope
+      const perpX = this._dirX;
+      const perpZ = this._dirZ;
+
+      applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+        const x = i % res;
+        const z = Math.floor(i / res);
+
+        // Project grid point onto the gradient axis (across the slope)
+        const proj = x * perpX + z * perpZ;
+
+        // Sine wave creates evenly-spaced parallel ridges running downhill
+        const ridgeSpacing = 5.5;
+        const wave = Math.sin(proj / ridgeSpacing * Math.PI);
+
+        // Cosine remap for extra-smooth, rounded ridge tops
+        const spine = (1.0 - Math.cos(Math.max(0, wave) * Math.PI)) * 0.5;
+
+        // Smoother: higher base growth, lower contrast
+        heightmap[i] += strength * falloff * (0.3 + spine * 1.0);
+
+        if (snowmap) {
+          snowmap[i] = Math.max(snowmap[i], spine * falloff);
+        }
+      });
+    }
+  },
+
   ridge: {
     name: 'Ridge',
     icon: '🔺',
