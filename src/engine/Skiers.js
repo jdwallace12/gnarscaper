@@ -113,12 +113,13 @@ export class Skiers {
     });
   }
 
-  /** Update all skiers — call each frame with deltaTime, seaLevel, and chairlifts ref */
-  update(dt, seaLevel, chairlifts, isSnowing = false, activeClouds = null) {
+  /** Update all skiers — call each frame with deltaTime, water, and chairlifts ref */
+  update(dt, water, chairlifts, isSnowing = false, activeClouds = null) {
     const gravity = 8.0; // Reduced from 10.0 for slower overall acceleration
     const friction = 0.97; // Increased base drag (was 0.98)
     const minSpeed = 0.001;
     this._chairlifts = chairlifts;
+    const seaLevel = water ? water.seaLevel : -1;
     const res = this.terrain.resolution;
     const size = this.terrain.size;
     const half = size / 2;
@@ -432,7 +433,10 @@ export class Skiers {
              isDirt = (ph < snowLine) && (this.terrain.snowmap[idx] <= 0.3);
           }
           
-          const ph = this.terrain.getInterpolatedHeight(px, pz);
+          let ph = this.terrain.getInterpolatedHeight(px, pz);
+          if (ph <= seaLevel && water) {
+             ph = seaLevel + water.getWaveHeight(px, pz);
+          }
           const climbNeeded = Math.max(0, ph - currentH);
           
           // Evaluate this direction:
@@ -532,7 +536,10 @@ export class Skiers {
         s.mesh.visible = false;
         continue;
       }
-      const terrainH = this.terrain.getInterpolatedHeight(s.wx, s.wz);
+      let terrainH = this.terrain.getInterpolatedHeight(s.wx, s.wz);
+      if (terrainH <= seaLevel && water) {
+        terrainH = seaLevel + water.getWaveHeight(s.wx, s.wz);
+      }
 
       // Vertical physics
       if (s.grounded) {

@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { Water } from './Water.js';
 
 /**
  * Player-controlled skier for 3rd-person ski mode.
@@ -88,6 +89,7 @@ export class PlayerSkier {
     this._snowTimer = 0;
 
     this._onWater = false;
+    this.water = null; // Reference to Water instance for wave surfing
 
     // Bind input handlers
     this._onKeyDown = this._onKeyDown.bind(this);
@@ -344,11 +346,17 @@ export class PlayerSkier {
     this.wz += this.vz * dt;
 
     // Terrain height at new position (re-sample after movement)
-    const terrainH = Math.max(this.terrain.getInterpolatedHeight(this.wx, this.wz), overWater ? this.seaLevel : -Infinity);
+    const rawTerrainH2 = this.terrain.getInterpolatedHeight(this.wx, this.wz);
+    
+    // Wave height at skier position (if water system is available)
+    const waveOffset = this.water ? this.water.getWaveHeight(this.wx, this.wz) : 0;
+    const waveH = this.seaLevel + waveOffset;
+    
+    const terrainH = Math.max(rawTerrainH2, overWater ? waveH : -Infinity);
 
     // Water detection: terrain at or below sea level means we're on water
-    // The skier planes over water — use sea level as the effective ground
-    this._onWater = this.grounded && this.terrain.getInterpolatedHeight(this.wx, this.wz) <= this.seaLevel;
+    // The skier planes over water — use wave surface as the effective ground
+    this._onWater = this.grounded && rawTerrainH2 <= this.seaLevel;
 
     // Once sinking has started, keep it going regardless of speed
     if (this._sinking && this._onWater) {
@@ -363,12 +371,12 @@ export class PlayerSkier {
       }
       // Sink below water — accelerating descent
       const sinkT = this._sinkTimer / 2.0; // 0→1 over 2 seconds
-      this.y = this.seaLevel - (sinkT * sinkT * 1.5);
+      this.y = waveH - (sinkT * sinkT * 1.5);
       // Splash bubbles while sinking
       this._splashTimer += dt;
       if (this._splashTimer >= 0.08) {
         this._splashTimer -= 0.08;
-        this._emitSplash(this.wx, this.seaLevel, this.wz);
+        this._emitSplash(this.wx, waveH, this.wz);
       }
       return true;
     } else if (this._onWater && this.speed > 0.3) {
@@ -394,7 +402,7 @@ export class PlayerSkier {
         this._splashTimer -= emitInterval;
         const count = this.speed > 5 ? 3 : (this.speed > 2 ? 2 : 1);
         for (let i = 0; i < count; i++) {
-          this._emitSplash(this.wx, this.seaLevel, this.wz);
+          this._emitSplash(this.wx, waveH, this.wz);
         }
       }
     } else {

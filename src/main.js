@@ -55,6 +55,7 @@ const history = new History(50);
 const clouds = new Clouds(terrain);
 const playerSkier = new PlayerSkier(terrain);
 playerSkier.seaLevel = seaLevel;
+playerSkier.water = water;
 
 scene.add(terrain.mesh);
 scene.add(water.mesh);
@@ -478,7 +479,7 @@ function animate() {
     }
     
     // Simulations must run inside the physics step to stay perfectly synchronized
-    skiers.update(PHYSICS_DT, seaLevel, chairlifts, isSnowing, clouds);
+    skiers.update(PHYSICS_DT, water, chairlifts, isSnowing, clouds);
     chairlifts.update(PHYSICS_DT);
     
     physicsAccumulator -= PHYSICS_DT;
