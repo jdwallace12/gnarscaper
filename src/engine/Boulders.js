@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 
 const BOULDER_VARIANTS = [
-  { type: 'icosahedron', detail: 0, color: 0x6e7885 },
-  { type: 'icosahedron', detail: 1, color: 0x5a6a7a },
-  { type: 'dodecahedron', detail: 0, color: 0x7d858d },
-  { type: 'dodecahedron', detail: 0, color: 0x8a929e },
-  { type: 'icosahedron', detail: 0, color: 0x4a5a6a },
+  { type: 'icosahedron', detail: 0, color: 0x3d4147 },
+  { type: 'icosahedron', detail: 1, color: 0x2a3036 },
+  { type: 'dodecahedron', detail: 0, color: 0x33363b },
+  { type: 'dodecahedron', detail: 0, color: 0x1f2226 },
+  { type: 'icosahedron', detail: 0, color: 0x262a2e },
 ];
 
 const MAX_BOULDERS = 5000;

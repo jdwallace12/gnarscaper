@@ -627,26 +627,46 @@ export const TOOLS = {
         }
       }
 
-      // Perpendicular to the fall line = across the slope
-      const perpX = this._dirX;
-      const perpZ = this._dirZ;
+        // Calculate perpendicular axis to the drag
+        const perpX = this._dirX;
+        const perpZ = this._dirZ;
+        // Calculate axis along the drag
+        const alongX = -perpZ;
+        const alongZ = perpX;
 
-      applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
-        const x = i % res;
-        const z = Math.floor(i / res);
+        applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+          const x = i % res;
+          const z = Math.floor(i / res);
 
-        // Project grid point onto the gradient axis (across the slope)
-        const proj = x * perpX + z * perpZ;
+          // Project onto both axes to create a grid of pillars
+          const projCross = x * perpX + z * perpZ;
+          const projAlong = x * alongX + z * alongZ;
 
-        // Sine wave creates evenly-spaced parallel ridges running downhill
-        const ridgeSpacing = 5.5;
-        const wave = Math.sin(proj / ridgeSpacing * Math.PI);
+          const ridgeSpacing = 22.0;
+          const waveCross = Math.sin(projCross / ridgeSpacing * Math.PI);
+          const waveAlong = Math.sin(projAlong / ridgeSpacing * Math.PI);
 
-        // Cosine remap for extra-smooth, rounded ridge tops
-        const spine = (1.0 - Math.cos(Math.max(0, wave) * Math.PI)) * 0.5;
+          // Combining waves on both axes creates individual cuboid columns
+          const combined = Math.max(0, waveCross) * Math.max(0, waveAlong);
 
-        // Smoother: higher base growth, lower contrast
-        heightmap[i] += strength * falloff * (0.3 + spine * 1.0);
+          // Steep but slightly more natural sides
+          const steep = Math.pow(combined, 0.12);
+
+          // Flat-top logic
+          const topNoise = fbm(x * 0.3, z * 0.3, 2, 2.0, 0.5);
+          const topCap = 0.9 + topNoise * 0.06;
+          const flat = Math.min(steep, topCap);
+
+          // Ledges / Banding
+          const banding = Math.floor(steep * 8) / 8;
+          let spine = flat * 0.75 + banding * 0.25;
+
+          // Blocky noise
+          const n = fbm(x * 0.2, z * 0.2, 3, 2.0, 0.5);
+          spine *= (0.8 + n * 0.4);
+
+          // Height output
+          heightmap[i] += strength * falloff * (0.05 + spine * 4.0);
 
         if (snowmap) {
           snowmap[i] = Math.max(snowmap[i], spine * falloff);
