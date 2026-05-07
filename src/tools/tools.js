@@ -3,7 +3,7 @@
  * Each tool has a name, icon, color, and an apply() function.
  */
 
-import { fbm } from '../engine/noise.js';
+import { fbm, ridgedNoise } from '../engine/noise.js';
 
 export const TOOLS = {
   raise: {
@@ -554,6 +554,43 @@ export const TOOLS = {
         heightmap[i] += (targetH - heightmap[i]) * falloff * 0.35;
       });
     },
+  },
+
+  pillowline: {
+    name: 'Pillow Line',
+    icon: '☁️',
+    color: '#e2e8f0',
+    cursor: 'crosshair',
+    isBrush: true,
+    category: 'Features',
+    apply(heightmap, res, cx, cz, radius, strength, isStart, noiseAmount, snowmap) {
+      applyBrush(heightmap, res, cx, cz, radius, (i, falloff) => {
+        const x = i % res;
+        const z = Math.floor(i / res);
+
+        // Two offset noise fields — multiplying them isolates peaks
+        // into distinct rounded bumps instead of continuous ridges
+        const scale = 0.25;
+        const n1 = fbm(x * scale, z * scale, 2, 2.0, 0.5) * 0.5 + 0.5;       // 0..1
+        const n2 = fbm(x * scale + 100, z * scale + 100, 2, 2.0, 0.5) * 0.5 + 0.5; // 0..1
+
+        // Multiply creates isolated peaks where BOTH fields are high
+        const combined = n1 * n2;
+
+        // Smoothstep for rounder, gentler bumps (no jagged peaks)
+        const t = Math.min(1, combined * 2.0);
+        const pillow = t * t * (3 - 2 * t); // hermite smoothstep: 0..1
+
+        // Low contrast: valleys still grow, peaks grow a bit more
+        // This keeps bumps uniform in height and rounded
+        heightmap[i] += strength * falloff * (0.5 + pillow * 0.8);
+
+        // Paint snow on pillow tops
+        if (snowmap) {
+          snowmap[i] = Math.max(snowmap[i], pillow * falloff);
+        }
+      });
+    }
   },
 
   ridge: {
