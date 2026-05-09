@@ -1,9 +1,10 @@
 import * as THREE from 'three/webgpu';
 
 export class Water {
-  constructor(size = 200, seaLevel = -1) {
+  constructor(size = 200, seaLevel = -1, terrain = null) {
     this.size = size;
     this.seaLevel = seaLevel;
+    this.terrain = terrain;
     this._time = 0;
 
     // Subdivided plane for wave animation
@@ -35,7 +36,24 @@ export class Water {
    * Returns a value to ADD to seaLevel.
    */
   getWaveHeight(wx, wz) {
-    return Water.waveHeight(wx, wz, this._time);
+    let rawHeight = Water.waveHeight(wx, wz, this._time);
+    
+    if (this.terrain) {
+      const terrainH = this.terrain.getInterpolatedHeight(wx, wz);
+      const depth = this.seaLevel - terrainH;
+      
+      let depthMultiplier = 1.0;
+      if (depth <= 0) {
+        depthMultiplier = 0.0;
+      } else if (depth < 5) {
+        // Fade waves out linearly as water gets shallower than 5 units
+        depthMultiplier = depth / 5;
+      }
+      
+      rawHeight *= depthMultiplier;
+    }
+    
+    return rawHeight;
   }
 
   /**
@@ -68,8 +86,8 @@ export class Water {
       const wx = pos.getX(i);
       const wz = pos.getZ(i);
 
-      // Animate Y with wave function
-      pos.setY(i, Water.waveHeight(wx, wz, this._time));
+      // Animate Y with wave function and terrain dampening
+      pos.setY(i, this.getWaveHeight(wx, wz));
     }
 
     pos.needsUpdate = true;

@@ -45,7 +45,7 @@ const canvas = document.getElementById('canvas');
 const scene = new SceneManager(canvas);
 await scene.init();
 const terrain = new Terrain(400, 256);
-const water = new Water(400, seaLevel);
+const water = new Water(400, seaLevel, terrain);
 const trees = new Trees(terrain);
 const boulders = new Boulders(terrain);
 const skiers = new Skiers(terrain);
