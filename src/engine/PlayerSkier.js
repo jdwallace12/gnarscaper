@@ -26,7 +26,8 @@ export class PlayerSkier {
     this.grounded = true;
 
     // Input state
-    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false };
+    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false, paraglide: false };
+    this.paragliding = false;
 
     // Camera pitch (controlled by W/S)
     this.cameraPitch = 0; // radians, positive = look up
@@ -151,7 +152,8 @@ export class PlayerSkier {
   /** Remove the player skier and clean up */
   despawn() {
     this.active = false;
-    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false };
+    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false, paraglide: false };
+    this.paragliding = false;
     this.cameraPitch = 0;
 
     // Reset chairlift state so re-entering doesn't resume a ride
@@ -437,6 +439,7 @@ export class PlayerSkier {
     }
 
     if (this.grounded) {
+      this.paragliding = false; // Reset paragliding on the ground
       // Manual Jump
       if (this._keys.jump) {
         this.grounded = false;
@@ -463,7 +466,72 @@ export class PlayerSkier {
       }
     } else {
       // Air physics
-      this.vy -= gravity * dt;
+      
+      // Deploy parachute if commanded and high enough
+      if (this._keys.paraglide && (this.y - terrainH > 2.0)) {
+        this.paragliding = true;
+      }
+      
+      // Cut parachute if command released
+      if (!this._keys.paraglide) {
+        this.paragliding = false;
+      }
+
+      if (this.paragliding) {
+        // Paraglider Physics
+        const chuteGravity = 0.8;
+        this.vy -= chuteGravity * dt;
+        
+        // Aerodynamic drag on vertical fall (terminal velocity)
+        if (this.vy < -3.0) {
+          this.vy += (this.vy * -0.8) * dt; 
+        }
+
+        // Steer while flying
+        const airTurnSpeed = 2.0;
+        if (this._keys.left) { this.heading += airTurnSpeed * dt; this._steerInput = 1; }
+        if (this._keys.right) { this.heading -= airTurnSpeed * dt; this._steerInput = -1; }
+        
+        // Push forward / Fly around
+        if (this._keys.forward) {
+          const flyThrust = 20.0;
+          this.vx += Math.sin(this.heading) * flyThrust * dt;
+          this.vz += Math.cos(this.heading) * flyThrust * dt;
+          // Add a bit of upward lift when actively flying forward
+          this.vy += 0.6 * dt;
+        }
+
+        // Ridge Lift: gain elevation when flying towards rising terrain
+        // gradX/gradZ are downhill directions, so -gradX/-gradZ is uphill
+        const uphillFlow = -(this.vx * gradX + this.vz * gradZ);
+        if (uphillFlow > 0) {
+          const heightAboveGround = this.y - terrainH;
+          const maxLiftHeight = 10.0;
+          if (heightAboveGround < maxLiftHeight) {
+            // Stronger lift when closer to the slope
+            const liftEffect = (1.0 - heightAboveGround / maxLiftHeight);
+            this.vy += uphillFlow * 0.66 * liftEffect * dt;
+          }
+        }
+
+        // Glide friction
+        this.vx *= 0.99;
+        this.vz *= 0.99;
+
+        // Align velocity to heading slightly so you fly where you look
+        const curSpeed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
+        if (curSpeed > 0.1) {
+          const desiredX = Math.sin(this.heading) * curSpeed;
+          const desiredZ = Math.cos(this.heading) * curSpeed;
+          this.vx += (desiredX - this.vx) * 1.5 * dt;
+          this.vz += (desiredZ - this.vz) * 1.5 * dt;
+        }
+        
+      } else {
+        // Normal falling physics
+        this.vy -= gravity * dt;
+      }
+
       this.y += this.vy * dt;
 
       // Landing check
@@ -471,6 +539,7 @@ export class PlayerSkier {
         this.y = terrainH;
         this.vy = 0;
         this.grounded = true;
+        this.paragliding = false;
         
         // Optional: on hard landings we could bleed some forward speed
         // this.vx *= 0.95; this.vz *= 0.95;
@@ -593,6 +662,16 @@ export class PlayerSkier {
     this.mesh.rotation.z = lean;
     this.mesh.rotation.x = targetPitch;
 
+    // Toggle Parachute visibility and animation
+    if (this._parachute) {
+      this._parachute.visible = this.paragliding;
+      if (this.paragliding) {
+        // Swing the parachute based on steering and speed
+        this._parachute.rotation.z = -lean * 0.5;
+        this._parachute.rotation.x = -targetPitch * 0.5 - 0.2; // Slight backwards tilt
+      }
+    }
+
     // Update splash particles
     this._updateSplashParticles(dt);
     this._updateSnowParticles(dt);
@@ -699,6 +778,7 @@ export class PlayerSkier {
       case 'ArrowDown':    e.preventDefault(); this._keys.brake = true; break;
       case 'w': case 'W':  this._keys.lookUp = true; break;
       case 's': case 'S':  this._keys.lookDown = true; break;
+      case 'x': case 'X':  this._keys.paraglide = true; break;
       case ' ':            e.preventDefault(); this._keys.jump = true; break;
     }
   }
@@ -711,6 +791,7 @@ export class PlayerSkier {
       case 'ArrowDown':    this._keys.brake = false; break;
       case 'w': case 'W':  this._keys.lookUp = false; break;
       case 's': case 'S':  this._keys.lookDown = false; break;
+      case 'x': case 'X':  this._keys.paraglide = false; break;
       case ' ':            this._keys.jump = false; break;
     }
   }
@@ -993,6 +1074,40 @@ export class PlayerSkier {
       pole.rotation.z = side * 0.2;
       group.add(pole);
     }
+
+    // Parachute
+    const chuteGroup = new THREE.Group();
+    const chuteMat = new THREE.MeshStandardMaterial({ color: 0xef233c, roughness: 0.8, side: THREE.DoubleSide });
+    const chuteMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(1.5, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.4),
+      chuteMat
+    );
+    chuteMesh.scale.set(1.8, 0.6, 0.7); // Stretch horizontally, squash to make a rectangular canopy
+    chuteMesh.position.y = 2.2; // High above skier
+    chuteGroup.add(chuteMesh);
+    
+    // Strings
+    const stringMat = new THREE.LineBasicMaterial({ color: 0x2b2d42 });
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      // Calculate rim position considering the canopy scale
+      const rimRadius = 1.5 * Math.sin(Math.PI * 0.4);
+      const px = Math.cos(angle) * rimRadius * 1.8;
+      const pz = Math.sin(angle) * rimRadius * 0.7;
+      const py = 2.2 + (1.5 * Math.cos(Math.PI * 0.4) * 0.6); // mesh Y + scaled rim Y
+
+      const points = [
+        new THREE.Vector3(0, 0.3, 0), // from skier hands/shoulders
+        new THREE.Vector3(px, py, pz) // to parachute rim
+      ];
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const string = new THREE.Line(lineGeo, stringMat);
+      chuteGroup.add(string);
+    }
+    
+    chuteGroup.visible = false;
+    this._parachute = chuteGroup;
+    group.add(chuteGroup);
 
     group.scale.setScalar(0.8); // Slightly larger than AI skiers
     return group;
