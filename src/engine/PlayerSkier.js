@@ -281,7 +281,7 @@ export class PlayerSkier {
     // Downhill alignment: gently rotate heading toward the fall line when not steering.
     // This prevents the skier from getting stuck sliding sideways on slopes.
     // Skip on water — there is no fall line on a flat surface.
-    if (!this._keys.left && !this._keys.right && !overWater) {
+    if (!this._keys.left && !this._keys.right && !overWater && !this.paragliding) {
       const gradMag = Math.sqrt(gradX * gradX + gradZ * gradZ);
       if (gradMag > 0.01) {
         // Fall line = steepest downhill direction
@@ -479,7 +479,7 @@ export class PlayerSkier {
 
       if (this.paragliding) {
         // Paraglider Physics
-        const chuteGravity = 0.8;
+        const chuteGravity = 0.75;
         this.vy -= chuteGravity * dt;
         
         // Aerodynamic drag on vertical fall (terminal velocity)
@@ -488,7 +488,7 @@ export class PlayerSkier {
         }
 
         // Steer while flying
-        const airTurnSpeed = 2.0;
+        const airTurnSpeed = 3.0;
         if (this._keys.left) { this.heading += airTurnSpeed * dt; this._steerInput = 1; }
         if (this._keys.right) { this.heading -= airTurnSpeed * dt; this._steerInput = -1; }
         
@@ -498,7 +498,7 @@ export class PlayerSkier {
           this.vx += Math.sin(this.heading) * flyThrust * dt;
           this.vz += Math.cos(this.heading) * flyThrust * dt;
           // Add a bit of upward lift when actively flying forward
-          this.vy += 0.6 * dt;
+          this.vy += 1.2 * dt;
         }
 
         // Ridge Lift: gain elevation when flying towards rising terrain
@@ -506,12 +506,17 @@ export class PlayerSkier {
         const uphillFlow = -(this.vx * gradX + this.vz * gradZ);
         if (uphillFlow > 0) {
           const heightAboveGround = this.y - terrainH;
-          const maxLiftHeight = 10.0;
+          const maxLiftHeight = 15.0;
           if (heightAboveGround < maxLiftHeight) {
             // Stronger lift when closer to the slope
             const liftEffect = (1.0 - heightAboveGround / maxLiftHeight);
-            this.vy += uphillFlow * 0.66 * liftEffect * dt;
+            const rawTargetLift = uphillFlow * 0.8 * liftEffect;
+            // Smoothly apply lift to prevent jitter on noisy terrain
+            this._smoothLift = (this._smoothLift || 0) * 0.9 + rawTargetLift * 0.1;
+            this.vy += this._smoothLift * dt;
           }
+        } else {
+          this._smoothLift = 0;
         }
 
         // Glide friction
@@ -523,8 +528,9 @@ export class PlayerSkier {
         if (curSpeed > 0.1) {
           const desiredX = Math.sin(this.heading) * curSpeed;
           const desiredZ = Math.cos(this.heading) * curSpeed;
-          this.vx += (desiredX - this.vx) * 1.5 * dt;
-          this.vz += (desiredZ - this.vz) * 1.5 * dt;
+          // Lower alignment strength for smoother flight
+          this.vx += (desiredX - this.vx) * 2.5 * dt;
+          this.vz += (desiredZ - this.vz) * 2.5 * dt;
         }
         
       } else {
@@ -666,9 +672,11 @@ export class PlayerSkier {
     if (this._parachute) {
       this._parachute.visible = this.paragliding;
       if (this.paragliding) {
-        // Swing the parachute based on steering and speed
-        this._parachute.rotation.z = -lean * 0.5;
-        this._parachute.rotation.x = -targetPitch * 0.5 - 0.2; // Slight backwards tilt
+        // Smoothly swing the parachute to prevent visual jitter
+        const targetRotZ = -lean * 0.5;
+        const targetRotX = -targetPitch * 0.5 - 0.2;
+        this._parachute.rotation.z += (targetRotZ - this._parachute.rotation.z) * smoothFactor;
+        this._parachute.rotation.x += (targetRotX - this._parachute.rotation.x) * smoothFactor;
       }
     }
 
