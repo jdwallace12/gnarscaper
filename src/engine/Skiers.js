@@ -58,6 +58,7 @@ export class Skiers {
     this._snowGeo = new THREE.IcosahedronGeometry(0.3, 0);
     this._snowPool = [];
     this._snowPoolSize = 600;
+    this._trailsVisible = true;
   }
 
   _updateSpatialHash() {
@@ -669,6 +670,13 @@ export class Skiers {
       this.group.remove(p.mesh);
     }
     this._snowPool = [];
+  }
+
+  setTrailsVisible(visible) {
+    this._trailsVisible = visible;
+    for (const s of this.skiers) {
+      if (s.trail) s.trail.visible = this._trailsVisible;
+    }
   }
 
   get count() {

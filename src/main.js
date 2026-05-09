@@ -131,6 +131,10 @@ const ui = new UI({
     }
   },
   onToggleSkierMode() { toggleSkierMode(); },
+  onToggleTrails(checked) {
+    skiers.setTrailsVisible(checked);
+    playerSkier.setTrailsVisible(checked);
+  },
   onUndo() { doUndo(); },
   onRedo() { doRedo(); },
   onReset() { doReset(); },

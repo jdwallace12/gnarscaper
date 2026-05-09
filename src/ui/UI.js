@@ -1,8 +1,8 @@
 import { TOOLS } from '../tools/tools.js';
 
 export class UI {
-  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour }) {
-    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour };
+  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails }) {
+    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails };
     this.activeToolKey = 'raise';
     this._build();
     this._bindKeys();
@@ -77,7 +77,7 @@ export class UI {
     
     // Define all available shortcut keys in order
     const numberKeys = ['1','2','3','4','5','6','7','8','9','0'];
-    const letterKeys = ['Q','E','R','T','Y','U','I','O','P','A','D','F','H','J','K','L'];
+    const letterKeys = ['Q','E','R','Y','U','I','O','P','A','D','F','H','J','K','L'];
     this.allShortcutKeys = [...numberKeys, ...letterKeys];
     
     categories.forEach(category => {
@@ -170,7 +170,7 @@ export class UI {
     wireframeLabel.style.justifyContent = 'space-between';
     wireframeLabel.style.width = '100%';
     wireframeLabel.style.cursor = 'pointer';
-    wireframeLabel.innerHTML = '<span>Show Grid <kbd style="margin-left:8px; opacity:0.6;">Cmd+G</kbd></span>';
+    wireframeLabel.innerHTML = '<span>Show Grid <kbd style="margin-left:8px; opacity:0.6;">G</kbd></span>';
     this.wireframeCheckbox = document.createElement('input');
     this.wireframeCheckbox.type = 'checkbox';
     this.wireframeCheckbox.addEventListener('change', (e) => {
@@ -241,6 +241,27 @@ export class UI {
     tourLabel.appendChild(tourCheckbox);
     tourRow.appendChild(tourLabel);
     sidebar.appendChild(tourRow);
+
+    // Trails Toggle
+    const trailsRow = document.createElement('div');
+    trailsRow.className = 'slider-group';
+    const trailsLabel = document.createElement('label');
+    trailsLabel.style.display = 'flex';
+    trailsLabel.style.justifyContent = 'space-between';
+    trailsLabel.style.width = '100%';
+    trailsLabel.style.cursor = 'pointer';
+    trailsLabel.innerHTML = '<span>🎿 Skier Trails <kbd style="margin-left:8px; opacity:0.6;">T</kbd></span>';
+    this.trailsCheckbox = document.createElement('input');
+    this.trailsCheckbox.type = 'checkbox';
+    this.trailsCheckbox.checked = true; // On by default
+    this.trailsCheckbox.addEventListener('change', (e) => {
+      if (this.callbacks.onToggleTrails) {
+        this.callbacks.onToggleTrails(e.target.checked);
+      }
+    });
+    trailsLabel.appendChild(this.trailsCheckbox);
+    trailsRow.appendChild(trailsLabel);
+    sidebar.appendChild(trailsRow);
 
     // Skier HUD (hidden by default, shown during ski mode)
     this._skierHud = document.createElement('div');
@@ -411,6 +432,26 @@ export class UI {
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName && e.target.tagName.toLowerCase() === 'input') return;
 
+      // Trails Toggle Shortcut (T key)
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        if (this.trailsCheckbox) {
+          this.trailsCheckbox.checked = !this.trailsCheckbox.checked;
+          this.trailsCheckbox.dispatchEvent(new Event('change'));
+        }
+        return;
+      }
+
+      // Grid Toggle Shortcut (G key)
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        if (this.wireframeCheckbox) {
+          this.wireframeCheckbox.checked = !this.wireframeCheckbox.checked;
+          this.wireframeCheckbox.dispatchEvent(new Event('change'));
+        }
+        return;
+      }
+
       // Handle tool shortcuts (Number keys and specific Letter keys)
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         const key = e.key.toUpperCase();
@@ -434,14 +475,6 @@ export class UI {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         this.callbacks.onSave();
-      }
-      // Grid Toggle Shortcut
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
-        e.preventDefault();
-        if (this.wireframeCheckbox) {
-          this.wireframeCheckbox.checked = !this.wireframeCheckbox.checked;
-          this.wireframeCheckbox.dispatchEvent(new Event('change'));
-        }
       }
       // Brush size with [ ] or strength with Cmd+[ ] or noise with Shift+[ ]
       if (e.code === 'BracketLeft') {

@@ -55,6 +55,7 @@ export class PlayerSkier {
     this._trailMat = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.9 });
     this._trail = null;
     this._trailPoints = [];
+    this._trailsVisible = true;
 
     // Shared materials
     this._bodyMat = new THREE.MeshStandardMaterial({ color: 0xff69b4, roughness: 0.6 }); // Pink jacket
@@ -685,6 +686,12 @@ export class PlayerSkier {
     this._updateSnowParticles(dt);
 
     // Trail
+    if (!this._trailsVisible) {
+      if (this._trail) this._trail.visible = false;
+      return;
+    }
+    if (this._trail) this._trail.visible = true;
+
     const tp = this._trailPoints;
     const lastIdx = tp.length - 3;
     let addPoint = true;
@@ -1119,5 +1126,9 @@ export class PlayerSkier {
 
     group.scale.setScalar(0.8); // Slightly larger than AI skiers
     return group;
+  }
+  setTrailsVisible(visible) {
+    this._trailsVisible = visible;
+    if (this._trail) this._trail.visible = this._trailsVisible;
   }
 }
