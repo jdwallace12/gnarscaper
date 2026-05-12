@@ -613,7 +613,19 @@ export class PlayerSkier {
     this._prevY = this.y;
 
     // Follow the chair mesh
+    if (!this.chair || !this.chair.mesh) {
+      this.state = 'skiing';
+      this.chair = null;
+      return true;
+    }
+
     const chairPos = this.chair.mesh.position;
+    if (!isFinite(chairPos.x)) {
+      this.state = 'skiing';
+      this.chair = null;
+      return true;
+    }
+
     this.wx = chairPos.x;
     this.wz = chairPos.z;
     this.y = chairPos.y - 0.7; // Sit slightly below the chair bar
@@ -632,7 +644,9 @@ export class PlayerSkier {
        this.vy = 0;
        this.grounded = true;
        // Give a little push forward
-       const angle = Math.atan2(this.wz - this._prevWz, this.wx - this._prevWx);
+       let dx = this.wx - this._prevWx;
+       let dz = this.wz - this._prevWz;
+       const angle = (Math.abs(dx) < 0.001 && Math.abs(dz) < 0.001) ? this.heading : Math.atan2(dz, dx);
        this.vx = Math.cos(angle) * 5;
        this.vz = Math.sin(angle) * 5;
     }
@@ -647,6 +661,9 @@ export class PlayerSkier {
     const x = this._prevWx + (this.wx - this._prevWx) * alpha;
     const z = this._prevWz + (this.wz - this._prevWz) * alpha;
     const y = this._prevY + (this.y - this._prevY) * alpha;
+    
+    if (!isFinite(x) || !isFinite(y) || !isFinite(z)) return;
+
     this.mesh.position.set(x, y + 0.15, z);
 
     // Frame-rate independent exponential tracking (~99.9% convergence per sec)
@@ -655,10 +672,11 @@ export class PlayerSkier {
     // Mesh Rotation
     const targetRot = this.heading;
     let diff = targetRot - this.mesh.rotation.y;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    this.mesh.rotation.y += diff * smoothFactor; 
-
+    if (isFinite(diff)) {
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      this.mesh.rotation.y += diff * smoothFactor; 
+    }
     // Lean into the turn
     const targetLean = -(this.angularVelocity || 0) * 0.15;
     if (this._currentLean === undefined) this._currentLean = 0;
@@ -750,11 +768,13 @@ export class PlayerSkier {
     if (travelMag > 0.0005) {
       const travelHeading = Math.atan2(this._smoothTravelX, this._smoothTravelZ);
       let diff = travelHeading - this.cameraHeading;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      // Time constant ~2.5s — very cinematic, lazy camera that never snaps during turns
-      const headingSmooth = 1 - Math.pow(0.01, frameDt);
-      this.cameraHeading += diff * headingSmooth;
+      if (isFinite(diff)) {
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        // Time constant ~2.5s — very cinematic, lazy camera that never snaps during turns
+        const headingSmooth = 1 - Math.pow(0.01, frameDt);
+        this.cameraHeading += diff * headingSmooth;
+      }
     }
 
     const camX = x - Math.sin(this.cameraHeading) * camDist;
