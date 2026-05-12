@@ -139,7 +139,7 @@ export class SceneManager {
     this._skierMode = false;
     this._currentLookAt = null;
 
-    // Restore shadow frustum
+    // Restore shadow frustum immediately to prevent artifacts
     if (this.sun) {
       const s = 300;
       this.sun.shadow.camera.left = -s;
@@ -156,17 +156,24 @@ export class SceneManager {
 
     // Restore OrbitControls
     this.controls.enabled = true;
-    if (this._savedCamPos) {
+    if (this._savedCamPos && isFinite(this._savedCamPos.x) && isFinite(this._savedTarget.x)) {
       this.camera.position.copy(this._savedCamPos);
       this.controls.target.copy(this._savedTarget);
       
-      // Ensure the camera is upright and looking at the target
+      // Force a full reset of camera orientation
       this.camera.up.set(0, 1, 0);
       this.camera.lookAt(this._savedTarget);
       
-      this.controls.update(); // Force OrbitControls to sync immediately
+      this.controls.update(); // Sync OrbitControls
       this.camera.updateProjectionMatrix();
       this.camera.updateMatrixWorld();
+    } else {
+      // Emergency fallback if saved state was lost or corrupted
+      this.camera.position.set(90, 120, 180);
+      this.controls.target.set(0, 0, 0);
+      this.camera.up.set(0, 1, 0);
+      this.camera.lookAt(0, 0, 0);
+      this.controls.update();
     }
   }
 
@@ -174,12 +181,12 @@ export class SceneManager {
   updateSkierCamera(targetPos, lookAtPos, dt) {
     if (!this._skierMode) return;
 
-    // NaN Guard: prevent camera from exploding if physics goes wild
-    if (isNaN(targetPos.x) || isNaN(lookAtPos.x)) return;
+    // Strict Finite Guard: prevent camera from exploding if physics goes wild
+    if (!isFinite(targetPos.x) || !isFinite(targetPos.y) || !isFinite(targetPos.z) ||
+        !isFinite(lookAtPos.x) || !isFinite(lookAtPos.y) || !isFinite(lookAtPos.z)) {
+      return;
+    }
 
-    // The targetPos and lookAtPos are already heavily smoothed inside PlayerSkier.js.
-    // We lock strictly to them here so the camera doesn't lag or rubber-band
-    // when the player pushes forward to increase speed.
     this.camera.position.copy(targetPos);
     
     if (!this._currentLookAt) this._currentLookAt = lookAtPos.clone();
