@@ -122,6 +122,7 @@ export class SceneManager {
 
     // Shadow Optimization: Shrink shadow frustum and center on player
     if (this.sun) {
+      if (this.sun.target.parent !== this.scene) this.scene.add(this.sun.target);
       const s = 50; // tight 100x100 frustum around player
       this.sun.shadow.camera.left = -s;
       this.sun.shadow.camera.right = s;
@@ -146,23 +147,35 @@ export class SceneManager {
       this.sun.shadow.camera.top = s;
       this.sun.shadow.camera.bottom = -s;
       this.sun.shadow.camera.updateProjectionMatrix();
+      
       // Restore sun pos
       this.sun.position.set(80, 120, 60);
       this.sun.target.position.set(0, 0, 0);
       this.sun.target.updateMatrixWorld();
     }
 
+    // Restore OrbitControls
     this.controls.enabled = true;
     if (this._savedCamPos) {
       this.camera.position.copy(this._savedCamPos);
       this.controls.target.copy(this._savedTarget);
+      
+      // Ensure the camera is upright and looking at the target
+      this.camera.up.set(0, 1, 0);
+      this.camera.lookAt(this._savedTarget);
+      
       this.controls.update(); // Force OrbitControls to sync immediately
+      this.camera.updateProjectionMatrix();
+      this.camera.updateMatrixWorld();
     }
   }
 
   /** Update chase camera to follow the player skier (call each frame in skier mode) */
   updateSkierCamera(targetPos, lookAtPos, dt) {
     if (!this._skierMode) return;
+
+    // NaN Guard: prevent camera from exploding if physics goes wild
+    if (isNaN(targetPos.x) || isNaN(lookAtPos.x)) return;
 
     // The targetPos and lookAtPos are already heavily smoothed inside PlayerSkier.js.
     // We lock strictly to them here so the camera doesn't lag or rubber-band
