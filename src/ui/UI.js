@@ -537,7 +537,7 @@ export class UI {
     const el = document.getElementById('skier-speed');
     if (el) {
       // Convert to mph feel
-      el.textContent = Math.round(speed * 7.5);
+      el.textContent = Math.round(speed * 5.0);
     }
   }
 
