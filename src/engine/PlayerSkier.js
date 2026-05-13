@@ -46,6 +46,8 @@ export class PlayerSkier {
     this.chair = null;
     this.targetStation = null;
     this._waitingTime = 0;
+    this._chairLookYaw = 0;   // Free-look yaw offset while on chairlift
+    this._chairLookPitch = 0; // Free-look pitch while on chairlift
 
     // Pre-allocated vectors (avoid GC micro-pauses from per-frame allocations)
     this._camPosVec = new THREE.Vector3();
@@ -616,19 +618,47 @@ export class PlayerSkier {
     if (!this.chair || !this.chair.mesh) {
       this.state = 'skiing';
       this.chair = null;
+      this._chairLookYaw = 0;
+      this._chairLookPitch = 0;
       return true;
     }
 
     const chairPos = this.chair.mesh.position;
-    if (!isFinite(chairPos.x)) {
+    if (!isFinite(chairPos.x) || !isFinite(chairPos.y) || !isFinite(chairPos.z)) {
       this.state = 'skiing';
       this.chair = null;
+      this._chairLookYaw = 0;
+      this._chairLookPitch = 0;
       return true;
     }
 
     this.wx = chairPos.x;
     this.wz = chairPos.z;
     this.y = chairPos.y - 0.7; // Sit slightly below the chair bar
+
+    // Guard: if position somehow became NaN, bail out of riding
+    if (!isFinite(this.wx) || !isFinite(this.wz) || !isFinite(this.y)) {
+      this.wx = this._prevWx;
+      this.wz = this._prevWz;
+      this.y = this._prevY;
+      this.state = 'skiing';
+      this.chair = null;
+      this._chairLookYaw = 0;
+      this._chairLookPitch = 0;
+      return true;
+    }
+
+    // Free-look while riding: left/right arrows rotate camera, W/S pitch
+    const lookSpeed = 2.0; // radians/sec
+    const pitchSpeed = 1.5;
+    if (this._keys.left)  this._chairLookYaw += lookSpeed * dt;
+    if (this._keys.right) this._chairLookYaw -= lookSpeed * dt;
+    if (this._keys.lookUp)   this._chairLookPitch = Math.min(this._chairLookPitch + pitchSpeed * dt, 1.8);
+    if (this._keys.lookDown) this._chairLookPitch = Math.max(this._chairLookPitch - pitchSpeed * dt, -1.2);
+    // Gently return pitch to neutral when not pressing
+    if (!this._keys.lookUp && !this._keys.lookDown) {
+      this._chairLookPitch *= 0.92;
+    }
 
     // Check for dismount
     const isP1Base = this.targetStation === this.targetLine.p1;
@@ -641,6 +671,8 @@ export class PlayerSkier {
        this.chair = null;
        this.targetLine = null;
        this.targetStation = null;
+       this._chairLookYaw = 0;
+       this._chairLookPitch = 0;
        this.vy = 0;
        this.grounded = true;
        // Give a little push forward
@@ -736,15 +768,21 @@ export class PlayerSkier {
   /** Get the chase camera target position and look-at (uses pre-allocated vectors) */
   getCameraTarget(alpha, dt) {
     // Interpolate everything strictly to exactly match visual drawing
-    const x = this._prevWx + (this.wx - this._prevWx) * alpha;
-    const z = this._prevWz + (this.wz - this._prevWz) * alpha;
-    const h = this._prevY + (this.y - this._prevY) * alpha;
+    let x = this._prevWx + (this.wx - this._prevWx) * alpha;
+    let z = this._prevWz + (this.wz - this._prevWz) * alpha;
+    let h = this._prevY + (this.y - this._prevY) * alpha;
+
+    // NaN guard: if interpolation produced garbage, fall back to last known good values
+    if (!isFinite(x)) x = this.wx || 0;
+    if (!isFinite(z)) z = this.wz || 0;
+    if (!isFinite(h)) h = this.y || 0;
     
     // Use dt for frame-rate independent smoothing (fall back to 1/60 if missing)
     const frameDt = dt || (1 / 60);
 
     const camDist = 14;  // Slightly tighter follow camera
-    const camHeight = 7 + this.cameraPitch * 5; // Balanced height
+    const pitchForCam = this.state === 'riding' ? this._chairLookPitch : this.cameraPitch;
+    const camHeight = 7 + pitchForCam * 5; // Balanced height
 
     // Camera tracks smoothed POSITION movement, not velocity or heading.
     // This makes it immune to sudden changes from pushing/turning keys.
@@ -763,6 +801,10 @@ export class PlayerSkier {
     this._smoothTravelX += (dx - this._smoothTravelX) * moveSmooth;
     this._smoothTravelZ += (dz - this._smoothTravelZ) * moveSmooth;
 
+    // NaN guard on smooth accumulators
+    if (!isFinite(this._smoothTravelX)) this._smoothTravelX = 0;
+    if (!isFinite(this._smoothTravelZ)) this._smoothTravelZ = 0;
+
     // Update camera heading based on smoothed travel direction
     const travelMag = Math.sqrt(this._smoothTravelX * this._smoothTravelX + this._smoothTravelZ * this._smoothTravelZ);
     if (travelMag > 0.0005) {
@@ -777,26 +819,40 @@ export class PlayerSkier {
       }
     }
 
-    const camX = x - Math.sin(this.cameraHeading) * camDist;
-    const camZ = z - Math.cos(this.cameraHeading) * camDist;
+    // NaN guard on camera heading
+    if (!isFinite(this.cameraHeading)) this.cameraHeading = this.heading || 0;
+
+    // When riding a chairlift, add the free-look yaw offset to the camera heading
+    let effectiveCamHeading = this.cameraHeading;
+    if (this.state === 'riding') {
+      effectiveCamHeading = this.cameraHeading + this._chairLookYaw;
+    }
+
+    const camX = x - Math.sin(effectiveCamHeading) * camDist;
+    const camZ = z - Math.cos(effectiveCamHeading) * camDist;
     let camY = h + camHeight;
 
     const terrainHAtCam = this.terrain.getInterpolatedHeight(camX, camZ);
     const minHeightAboveGround = 3.0;
-    if (camY < terrainHAtCam + minHeightAboveGround) {
+    if (isFinite(terrainHAtCam) && camY < terrainHAtCam + minHeightAboveGround) {
       camY = terrainHAtCam + minHeightAboveGround;
     }
 
+    // NaN guard on camY
+    if (!isFinite(camY)) camY = h + camHeight;
+
     // Frame-rate independent vertical smoothing — time constant ~1.8s prevents Y-axis jumpiness
-    if (this._smoothCamY === undefined) this._smoothCamY = camY;
+    if (this._smoothCamY === undefined || !isFinite(this._smoothCamY)) this._smoothCamY = camY;
     const ySmooth = 1 - Math.pow(0.01, frameDt);
     this._smoothCamY += (camY - this._smoothCamY) * ySmooth;
+    if (!isFinite(this._smoothCamY)) this._smoothCamY = camY;
 
     // Also smooth the lookAt Y to prevent vertical jitter in the focus point
-    const lookY = h + 1.5 + this.cameraPitch * 8;
-    if (this._smoothLookY === undefined) this._smoothLookY = lookY;
+    const lookY = h + 1.5 + pitchForCam * 8;
+    if (this._smoothLookY === undefined || !isFinite(this._smoothLookY)) this._smoothLookY = lookY;
     const lookYSmooth = 1 - Math.pow(0.005, frameDt);
     this._smoothLookY += (lookY - this._smoothLookY) * lookYSmooth;
+    if (!isFinite(this._smoothLookY)) this._smoothLookY = lookY;
 
     this._camPosVec.set(camX, this._smoothCamY, camZ);
     this._lookAtVec.set(x, this._smoothLookY, z);
