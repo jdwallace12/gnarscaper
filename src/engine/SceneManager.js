@@ -177,6 +177,22 @@ export class SceneManager {
     }
   }
 
+  /** Reset camera to starting position */
+  resetCamera() {
+    console.log("SceneManager: Resetting camera...");
+    if (this._skierMode) return; // Don't reset while skiing
+    
+    // Explicitly reset controls and camera to starting state
+    this.controls.target.set(0, 0, 0);
+    this.camera.position.set(90, 120, 180);
+    this.camera.up.set(0, 1, 0);
+    this.camera.lookAt(0, 0, 0);
+    
+    // Force controls to update their internal state based on new camera pos
+    this.controls.update();
+    this.camera.updateProjectionMatrix();
+  }
+
   /** Update chase camera to follow the player skier (call each frame in skier mode) */
   updateSkierCamera(targetPos, lookAtPos, dt) {
     if (!this._skierMode) return;

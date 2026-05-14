@@ -1,8 +1,8 @@
 import { TOOLS } from '../tools/tools.js';
 
 export class UI {
-  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails }) {
-    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails };
+  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera }) {
+    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera };
     this.activeToolKey = 'raise';
     this._build();
     this._bindKeys();
@@ -48,6 +48,24 @@ export class UI {
     skiBtn.addEventListener('click', () => {
       if (this.callbacks.onToggleSkierMode) this.callbacks.onToggleSkierMode();
     });
+    // Reset Camera Button
+    const resetCamBtn = document.createElement('button');
+    resetCamBtn.className = 'history-btn'; 
+    resetCamBtn.style.padding = '8px 14px';
+    resetCamBtn.style.fontSize = '0.75rem';
+    resetCamBtn.style.display = 'flex';
+    resetCamBtn.style.alignItems = 'center';
+    resetCamBtn.style.gap = '8px';
+    resetCamBtn.style.cursor = 'pointer';
+    resetCamBtn.style.pointerEvents = 'auto';
+    resetCamBtn.innerHTML = '<span style="font-size:1.1rem">🔄</span> Reset View';
+    resetCamBtn.title = 'Reset camera to starting position';
+    resetCamBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.callbacks.onResetCamera) this.callbacks.onResetCamera();
+    });
+    topbarActions.appendChild(resetCamBtn);
+
     topbarActions.appendChild(skiBtn);
 
     // Title

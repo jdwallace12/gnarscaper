@@ -131,6 +131,7 @@ const ui = new UI({
     }
   },
   onToggleSkierMode() { toggleSkierMode(); },
+  onResetCamera() { scene.resetCamera(); },
   onToggleTrails(checked) {
     skiers.setTrailsVisible(checked);
     playerSkier.setTrailsVisible(checked);

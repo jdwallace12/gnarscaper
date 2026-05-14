@@ -99,7 +99,12 @@ button, input, select, textarea {
     transform: translateY(0);
   }
 }
-
+#topbar-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
 #topbar .slider-group {
   flex-direction: row;
   align-items: center;
