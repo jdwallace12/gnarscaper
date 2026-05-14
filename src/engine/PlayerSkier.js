@@ -650,11 +650,11 @@ export class PlayerSkier {
 
     // Free-look while riding: left/right arrows rotate camera, W/S pitch
     const lookSpeed = 2.0; // radians/sec
-    const pitchSpeed = 1.5;
+    const pitchSpeed = 2.2;
     if (this._keys.left)  this._chairLookYaw += lookSpeed * dt;
     if (this._keys.right) this._chairLookYaw -= lookSpeed * dt;
-    if (this._keys.lookUp)   this._chairLookPitch = Math.min(this._chairLookPitch + pitchSpeed * dt, 1.8);
-    if (this._keys.lookDown) this._chairLookPitch = Math.max(this._chairLookPitch - pitchSpeed * dt, -1.2);
+    if (this._keys.lookUp)   this._chairLookPitch = Math.min(this._chairLookPitch + pitchSpeed * dt, 2.5);
+    if (this._keys.lookDown) this._chairLookPitch = Math.max(this._chairLookPitch - pitchSpeed * dt, -2.0);
     // Gently return pitch to neutral when not pressing
     if (!this._keys.lookUp && !this._keys.lookDown) {
       this._chairLookPitch *= 0.92;
@@ -780,10 +780,6 @@ export class PlayerSkier {
     // Use dt for frame-rate independent smoothing (fall back to 1/60 if missing)
     const frameDt = dt || (1 / 60);
 
-    const camDist = 14;  // Slightly tighter follow camera
-    const pitchForCam = this.state === 'riding' ? this._chairLookPitch : this.cameraPitch;
-    const camHeight = 7 + pitchForCam * 5; // Balanced height
-
     // Camera tracks smoothed POSITION movement, not velocity or heading.
     // This makes it immune to sudden changes from pushing/turning keys.
     if (this.cameraHeading === undefined) this.cameraHeading = this.heading;
@@ -819,23 +815,54 @@ export class PlayerSkier {
       }
     }
 
-    // NaN guard on camera heading
-    if (!isFinite(this.cameraHeading)) this.cameraHeading = this.heading || 0;
+    // Base camera parameters
+    const targetCamDist = 12;
+    const pitchForCam = this.state === 'riding' ? this._chairLookPitch : this.cameraPitch;
+    const targetCamHeight = 6.5 + pitchForCam * 5; 
 
-    // When riding a chairlift, add the free-look yaw offset to the camera heading
+    // Camera Collision & Obstruction Avoidance
+    // We check the terrain height at the camera position and midway to the skier.
+    // If the terrain is too high, we calculate an 'ideal' pull-in amount.
     let effectiveCamHeading = this.cameraHeading;
     if (this.state === 'riding') {
       effectiveCamHeading = this.cameraHeading + this._chairLookYaw;
     }
 
-    const camX = x - Math.sin(effectiveCamHeading) * camDist;
-    const camZ = z - Math.cos(effectiveCamHeading) * camDist;
-    let camY = h + camHeight;
+    let collisionDist = targetCamDist;
+    let collisionHeightBonus = 0;
 
-    const terrainHAtCam = this.terrain.getInterpolatedHeight(camX, camZ);
-    const minHeightAboveGround = 3.0;
-    if (isFinite(terrainHAtCam) && camY < terrainHAtCam + minHeightAboveGround) {
-      camY = terrainHAtCam + minHeightAboveGround;
+    for (let i = 0; i < 3; i++) {
+      const testX = x - Math.sin(effectiveCamHeading) * collisionDist;
+      const testZ = z - Math.cos(effectiveCamHeading) * collisionDist;
+      const terrainHAtCam = this.terrain.getInterpolatedHeight(testX, testZ);
+      
+      if (isFinite(terrainHAtCam) && terrainHAtCam > h + 1.0) {
+        // If the terrain behind us is higher than the skier's feet, pull in and push up.
+        collisionDist *= 0.75;
+        collisionHeightBonus += 1.5;
+      } else {
+        break;
+      }
+    }
+
+    // Smoothly interpolate the actual distance and height bonus to prevent popping/jitter
+    if (this._currentCamDist === undefined) this._currentCamDist = targetCamDist;
+    if (this._currentCamHeightBonus === undefined) this._currentCamHeightBonus = 0;
+    
+    // Faster smoothing for pull-in (collision), slower for return
+    const isPullingIn = collisionDist < this._currentCamDist;
+    const distSmooth = 1 - Math.pow(isPullingIn ? 0.00001 : 0.001, frameDt);
+    this._currentCamDist += (collisionDist - this._currentCamDist) * distSmooth;
+    this._currentCamHeightBonus += (collisionHeightBonus - this._currentCamHeightBonus) * distSmooth;
+
+    const camX = x - Math.sin(effectiveCamHeading) * this._currentCamDist;
+    const camZ = z - Math.cos(effectiveCamHeading) * this._currentCamDist;
+    let camY = h + targetCamHeight + this._currentCamHeightBonus;
+
+    const terrainHAtCamFinal = this.terrain.getInterpolatedHeight(camX, camZ);
+    const minHeightAboveGround = 2.5;
+    if (isFinite(terrainHAtCamFinal) && camY < terrainHAtCamFinal + minHeightAboveGround) {
+      camY = terrainHAtCamFinal + minHeightAboveGround;
     }
 
     // NaN guard on camY

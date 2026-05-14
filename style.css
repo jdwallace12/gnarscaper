@@ -517,7 +517,7 @@ input[type="range"]::-moz-range-thumb {
 /* ---- Skier Placement Hint ---- */
 #skier-placement-hint {
   position: fixed;
-  top: 100px;
+  bottom: 48px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--glass-bg);
