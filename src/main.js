@@ -133,6 +133,11 @@ const ui = new UI({
   },
   onToggleSkierMode() { toggleSkierMode(); },
   onResetCamera() { scene.resetCamera(); },
+  onMobileControl(dir, active) {
+    const keyMap = { 'up': 'ArrowUp', 'down': 'ArrowDown', 'left': 'ArrowLeft', 'right': 'ArrowRight' };
+    playerSkier.keys[keyMap[dir]] = active;
+    mobileMovement[dir] = active;
+  },
   onToggleTrails(checked) {
     skiers.setTrailsVisible(checked);
     playerSkier.setTrailsVisible(checked);
@@ -143,6 +148,32 @@ const ui = new UI({
   onSave(force) { doSaveMap(force); },
   onLoad() { triggerLoadMap(); },
 });
+
+const mobileMovement = { up: false, down: false, left: false, right: false };
+
+function updateMobileCamera(dt) {
+  if (isSkierMode || isTourMode) return;
+  
+  const moveSpeed = 150 * dt;
+  const camDir = new THREE.Vector3();
+  scene.camera.getWorldDirection(camDir);
+  camDir.y = 0;
+  camDir.normalize();
+  
+  const sideDir = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), camDir).normalize();
+  
+  const moveVec = new THREE.Vector3(0, 0, 0);
+  if (mobileMovement.up) moveVec.addScaledVector(camDir, moveSpeed);
+  if (mobileMovement.down) moveVec.addScaledVector(camDir, -moveSpeed);
+  if (mobileMovement.left) moveVec.addScaledVector(sideDir, moveSpeed);
+  if (mobileMovement.right) moveVec.addScaledVector(sideDir, -moveSpeed);
+  
+  if (moveVec.lengthSq() > 0) {
+    scene.camera.position.add(moveVec);
+    scene.controls.target.add(moveVec);
+    scene.controls.update();
+  }
+}
 
 function doUndo() {
   const snap = history.undo(terrain.snapshot());
@@ -541,6 +572,12 @@ function animate() {
   snow.update(dt);
   clouds.update(dt);
   water.update(dt);
+
+  if (isSkierMode) {
+    // ...
+  } else {
+    updateMobileCamera(dt);
+  }
 
   scene.render();
 }

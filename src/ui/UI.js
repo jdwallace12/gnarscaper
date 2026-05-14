@@ -1,11 +1,51 @@
 import { TOOLS } from '../tools/tools.js';
 
 export class UI {
-  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera }) {
-    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera };
+  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl }) {
+    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl };
     this.activeToolKey = 'raise';
     this._build();
     this._bindKeys();
+  }
+
+  _buildMobileDPad(parent) {
+    const dpad = document.createElement('div');
+    dpad.id = 'mobile-dpad';
+    parent.appendChild(dpad);
+
+    const dirs = [
+      { id: 'up', icon: '▲', key: 'up' },
+      { id: 'left', icon: '◀', key: 'left' },
+      { id: 'right', icon: '▶', key: 'right' },
+      { id: 'down', icon: '▼', key: 'down' }
+    ];
+
+    dirs.forEach(d => {
+      const btn = document.createElement('button');
+      btn.className = `dpad-btn dpad-${d.id}`;
+      btn.innerHTML = d.icon;
+      
+      const handleStart = (e) => {
+        e.preventDefault();
+        if (this.callbacks.onMobileControl) this.callbacks.onMobileControl(d.key, true);
+        btn.classList.add('active');
+      };
+      
+      const handleEnd = (e) => {
+        e.preventDefault();
+        if (this.callbacks.onMobileControl) this.callbacks.onMobileControl(d.key, false);
+        btn.classList.remove('active');
+      };
+
+      btn.addEventListener('mousedown', handleStart);
+      btn.addEventListener('mouseup', handleEnd);
+      btn.addEventListener('mouseleave', handleEnd);
+      btn.addEventListener('touchstart', handleStart, { passive: false });
+      btn.addEventListener('touchend', handleEnd);
+      btn.addEventListener('touchcancel', handleEnd);
+      
+      dpad.appendChild(btn);
+    });
   }
 
   setUndoRedoState(canUndo, canRedo) {
@@ -147,18 +187,25 @@ export class UI {
     // Brush settings (dynamically moved between topbar and sidebar for responsiveness)
     const brushSettings = document.createElement('div');
     brushSettings.id = 'brush-settings';
+
+    const slidersContainer = document.createElement('div');
+    slidersContainer.id = 'brush-sliders-container';
+    brushSettings.appendChild(slidersContainer);
     
-    this.radiusSlider = this._slider(brushSettings, 'Brush Size', 1, 100, 16, (v) => {
+    this.radiusSlider = this._slider(slidersContainer, 'Brush Size', 1, 100, 16, (v) => {
       this.callbacks.onBrushRadius(v);
     }, 1, '<kbd>[</kbd> and <kbd>]</kbd>');
 
-    this.strengthSlider = this._slider(brushSettings, 'Strength', 0.05, 2.0, 0.6, (v) => {
+    this.strengthSlider = this._slider(slidersContainer, 'Strength', 0.05, 2.0, 0.6, (v) => {
       this.callbacks.onBrushStrength(v);
     }, 0.05, '<kbd>Cmd/Ctrl + [</kbd> and <kbd>]</kbd>');
 
-    this.noiseSlider = this._slider(brushSettings, 'Noise Level', 0.0, 1.0, 0.5, (v) => {
+    this.noiseSlider = this._slider(slidersContainer, 'Noise Level', 0.0, 1.0, 0.5, (v) => {
       this.callbacks.onNoiseLevel(v);
     }, 0.05, '<kbd>Shift + [</kbd> and <kbd>]</kbd>');
+
+    // Build D-Pad globally (floats above sheet)
+    this._buildMobileDPad(document.body);
 
     // Handle dynamic repositioning based on screen size
     const repositionBrush = () => {
@@ -168,12 +215,10 @@ export class UI {
 
       if (window.innerWidth <= 768) {
         if (brushSettings.parentElement !== sidebar) {
-          // Put at top of sidebar on mobile
           sidebar.insertBefore(brushSettings, sidebar.firstChild);
         }
       } else {
         if (brushSettings.parentElement !== topbar) {
-          // Put at start of topbar on desktop
           topbar.insertBefore(brushSettings, topbar.firstChild);
         }
       }

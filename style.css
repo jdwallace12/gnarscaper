@@ -91,7 +91,17 @@ button, input, select, textarea {
   display: flex;
   flex-direction: row;
   align-items: center;
+}
+
+#brush-sliders-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   gap: 20px;
+}
+
+#mobile-dpad {
+  display: none; /* Hidden on desktop */
 }
 
 @keyframes slideDown {
@@ -570,34 +580,69 @@ input[type="range"]::-moz-range-thumb {
   }
 
   #brush-settings {
-    flex-direction: column;
-    gap: 16px; /* Increased space between sliders */
+    flex-direction: column !important;
+    gap: 12px;
     width: 100%;
-    margin-bottom: 8px;
-    padding: 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    margin-bottom: 12px;
+    padding: 12px 0; /* Remove horizontal padding for full-width look */
+    background: none;
+    border: none;
+    box-sizing: border-box;
+    min-height: auto;
+  }
+
+  #brush-sliders-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .slider-group {
+    padding: 0 16px; /* Add padding back to internal groups instead of parent */
+    width: 100%;
     box-sizing: border-box;
   }
 
-  .slider-group {
-    flex-direction: column !important;
-    align-items: stretch !important; /* Full width */
-    gap: 8px;
-    width: 100%;
+  #mobile-dpad {
+    display: block;
+    position: fixed !important;
+    bottom: 48vh;
+    right: 16px;
+    width: 140px !important;
+    height: 140px !important;
+    z-index: 300;
+    pointer-events: none;
+    opacity: 0.95;
   }
 
-  #brush-settings input[type="range"] {
-    width: 100% !important;
-    margin: 10px 0;
+  #brush-settings kbd, 
+  #brush-settings .slider-group span:last-child {
+    display: none !important;
   }
 
-  .slider-group {
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 4px;
+  .dpad-btn {
+    position: absolute !important;
+    width: 42px !important;
+    height: 42px !important;
+    background: rgba(15, 20, 30, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    color: white;
+    pointer-events: auto;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
   }
+  
+  .dpad-up { top: 0; left: 44px; }
+  .dpad-down { bottom: 0; left: 44px; }
+  .dpad-left { left: 0; top: 44px; }
+  .dpad-right { right: 0; top: 44px; }
 
   .tool-btn:active {
     transform: scale(0.95);
@@ -697,3 +742,51 @@ input[type="range"]::-moz-range-thumb {
     display: none; /* Hide "Brush Size" text, keep value */
   }
 }
+/* ---- Mobile D-Pad ---- */
+#mobile-dpad {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 150px;
+  height: 150px;
+  z-index: 300;
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  #mobile-dpad {
+    display: block;
+  }
+}
+
+.dpad-btn {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  pointer-events: auto;
+  user-select: none;
+  touch-action: none;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.dpad-btn.active {
+  background: var(--accent);
+  border-color: white;
+  transform: scale(0.95);
+}
+
+.dpad-up { top: 0; left: 50px; }
+.dpad-down { bottom: 0; left: 50px; }
+.dpad-left { left: 0; top: 50px; }
+.dpad-right { right: 0; top: 50px; }
