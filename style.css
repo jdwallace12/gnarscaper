@@ -87,6 +87,13 @@ button, input, select, textarea {
   animation: slideDown 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+#brush-settings {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20px;
+}
+
 @keyframes slideDown {
   from {
     top: -50px;
@@ -543,24 +550,150 @@ input[type="range"]::-moz-range-thumb {
   pointer-events: none;
 }
 
-/* ---- Responsive ---- */
-@media (max-width: 640px) {
+/* ==============================
+   Responsive & Mobile Optimization
+   ============================== */
+@media (max-width: 768px) {
   :root {
-    --sidebar-width: 180px;
+    --sidebar-width: 100%;
   }
+
+  /* Topbar: Slimmer and centered */
+  #topbar {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    padding: 8px 12px;
+    gap: 8px;
+    border-radius: 12px;
+    justify-content: center;
+  }
+
+  #brush-settings {
+    flex-direction: column;
+    gap: 16px; /* Increased space between sliders */
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-sizing: border-box;
+  }
+
+  .slider-group {
+    flex-direction: column !important;
+    align-items: stretch !important; /* Full width */
+    gap: 8px;
+    width: 100%;
+  }
+
+  #brush-settings input[type="range"] {
+    width: 100% !important;
+    margin: 10px 0;
+  }
+
+  .slider-group {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px;
+  }
+
+  .tool-btn:active {
+    transform: scale(0.95);
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  #topbar-actions {
+    gap: 8px;
+    width: 100%;
+    justify-content: space-around;
+  }
+
+  .ski-mode-btn, .history-btn {
+    flex: 1;
+    font-size: 0.7rem;
+    padding: 0 8px;
+    height: 34px;
+  }
+
+  /* Sidebar: Transitions to a "Bottom Sheet" */
   #sidebar {
     top: auto;
-    bottom: 0;
     left: 0;
     right: 0;
+    bottom: 0;
     width: 100%;
-    height: auto;
-    max-height: 45vh;
-    border-radius: 16px 16px 0 0;
-    flex-direction: column;
-    padding: 14px 12px;
+    height: 40vh;
+    max-height: 40vh;
+    border-radius: 20px 20px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    padding: 12px 16px;
+    gap: 4px;
+    box-shadow: 0 -10px 40px rgba(0,0,0,0.4);
   }
+
+  .sidebar-title { display: none; }
+  .sidebar-subtitle { display: none; }
+  
   .tool-grid {
     grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  .tool-btn {
+    padding: 12px 4px;
+  }
+
+  .tool-icon { font-size: 1.5rem; }
+  .tool-name { font-size: 0.6rem; }
+
+  /* HUD: Minimalist for small screens */
+  #skier-hud {
+    bottom: calc(40vh + 16px); /* Float above the bottom sheet */
+  }
+
+  .skier-hud-speed {
+    padding: 8px 20px;
+    border-radius: 12px;
+  }
+
+  .skier-hud-value {
+    font-size: 1.6rem;
+    min-width: 45px;
+  }
+
+  .skier-hud-controls {
+    display: none; /* Keyboard shortcuts are irrelevant on mobile */
+  }
+
+  #skier-placement-hint {
+    bottom: calc(40vh + 20px);
+    font-size: 0.75rem;
+    padding: 8px 16px;
+    width: 90%;
+    text-align: center;
+  }
+
+  /* Slider touch targets */
+  input[type="range"]::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* Tablet / Landscape tweaks */
+@media (min-width: 769px) and (max-width: 1100px) {
+  :root {
+    --sidebar-width: 200px;
+  }
+  #topbar {
+    left: calc(var(--sidebar-width) + 24px);
+    gap: 16px;
+  }
+  #topbar .slider-group label span:first-child {
+    display: none; /* Hide "Brush Size" text, keep value */
   }
 }

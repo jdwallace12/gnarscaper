@@ -62,15 +62,14 @@ export class UI {
     resetCamBtn.style.fontWeight = '700';
     resetCamBtn.style.fontSize = '0.75rem';
     resetCamBtn.style.cursor = 'pointer';
-    resetCamBtn.style.transition = 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-    resetCamBtn.style.boxShadow = '0 0 15px rgba(56, 189, 248, 0.2)';
     resetCamBtn.style.display = 'flex';
     resetCamBtn.style.alignItems = 'center';
     resetCamBtn.style.justifyContent = 'center';
     resetCamBtn.style.lineHeight = '1';
-    resetCamBtn.style.gap = '10px';
+    resetCamBtn.style.gap = '8px';
     resetCamBtn.style.pointerEvents = 'auto';
     resetCamBtn.style.whiteSpace = 'nowrap';
+    resetCamBtn.style.overflow = 'hidden';
     resetCamBtn.innerHTML = '<span style="font-size:1.1rem; line-height:1">🔄</span> Reset View';
     resetCamBtn.title = 'Reset camera to starting position';
     resetCamBtn.addEventListener('click', (e) => {
@@ -145,24 +144,42 @@ export class UI {
 
     sidebar.appendChild(this._divider());
 
-    // Brush settings (in topbar)
-    const topbarSliders = document.createElement('div');
-    topbarSliders.style.display = 'flex';
-    topbarSliders.style.flexDirection = 'row';
-    topbarSliders.style.gap = '20px';
-    topbar.insertBefore(topbarSliders, topbar.firstChild);
-
-    this.radiusSlider = this._slider(topbarSliders, 'Brush Size', 1, 100, 16, (v) => {
+    // Brush settings (dynamically moved between topbar and sidebar for responsiveness)
+    const brushSettings = document.createElement('div');
+    brushSettings.id = 'brush-settings';
+    
+    this.radiusSlider = this._slider(brushSettings, 'Brush Size', 1, 100, 16, (v) => {
       this.callbacks.onBrushRadius(v);
     }, 1, '<kbd>[</kbd> and <kbd>]</kbd>');
 
-    this.strengthSlider = this._slider(topbarSliders, 'Strength', 0.05, 2.0, 0.6, (v) => {
+    this.strengthSlider = this._slider(brushSettings, 'Strength', 0.05, 2.0, 0.6, (v) => {
       this.callbacks.onBrushStrength(v);
     }, 0.05, '<kbd>Cmd/Ctrl + [</kbd> and <kbd>]</kbd>');
 
-    this.noiseSlider = this._slider(topbarSliders, 'Noise Level', 0.0, 1.0, 0.5, (v) => {
+    this.noiseSlider = this._slider(brushSettings, 'Noise Level', 0.0, 1.0, 0.5, (v) => {
       this.callbacks.onNoiseLevel(v);
     }, 0.05, '<kbd>Shift + [</kbd> and <kbd>]</kbd>');
+
+    // Handle dynamic repositioning based on screen size
+    const repositionBrush = () => {
+      const topbar = document.getElementById('topbar');
+      const sidebar = document.getElementById('sidebar');
+      if (!topbar || !sidebar) return;
+
+      if (window.innerWidth <= 768) {
+        if (brushSettings.parentElement !== sidebar) {
+          // Put at top of sidebar on mobile
+          sidebar.insertBefore(brushSettings, sidebar.firstChild);
+        }
+      } else {
+        if (brushSettings.parentElement !== topbar) {
+          // Put at start of topbar on desktop
+          topbar.insertBefore(brushSettings, topbar.firstChild);
+        }
+      }
+    };
+    window.addEventListener('resize', repositionBrush);
+    repositionBrush();
 
     // Tree settings (in sidebar)
     this.treeDensitySlider = this._slider(sidebar, 'Boulder & Tree Density', 1, 10, 5, (v) => {

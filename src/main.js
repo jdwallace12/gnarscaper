@@ -39,6 +39,7 @@ let isTourMode = false;
 let tourTime = 0;
 let isSkierPlacementMode = false; // waiting for user to click spawn point
 let currentFileHandle = null;
+let lastPlacementTime = 0;
 
 // ---- Init ----
 const canvas = document.getElementById('canvas');
@@ -514,6 +515,20 @@ function animate() {
     scene.camera.position.lerp(new THREE.Vector3(camX, camY, camZ), smoothGlide);
     scene.controls.target.lerp(new THREE.Vector3(lookX, seaLevel + 5, lookZ), smoothGlide);
     scene.camera.lookAt(scene.controls.target); 
+  }
+
+  if (brush.enabled && brush.painting && !isSkierMode) {
+    const tool = TOOLS[currentToolKey];
+    if (tool && (tool.isTree || tool.isBoulder) && brush.intersectionPoint) {
+      // Throttle tree/boulder placement to avoid overcrowding
+      const now = performance.now();
+      if (now - lastPlacementTime > 100) { // 10 placements per second
+        const worldRadius = (brush.radius / terrain.resolution) * terrain.size;
+        if (tool.isTree) trees.placeCluster(brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius, treeDensity, seaLevel);
+        if (tool.isBoulder) boulders.placeCluster(brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius, treeDensity, seaLevel);
+        lastPlacementTime = now;
+      }
+    }
   }
 
   const modified = brush.update(seaLevel);
