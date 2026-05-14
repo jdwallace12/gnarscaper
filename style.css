@@ -616,26 +616,29 @@ input[type="range"]::-moz-range-thumb {
     position: fixed !important;
     bottom: 48vh;
     right: 16px;
-    width: 140px !important;
-    height: 140px !important;
+    width: 144px !important;
+    height: 144px !important;
     z-index: 300;
-    pointer-events: none;
+    pointer-events: auto;
+    background: rgba(15, 20, 30, 0.3); /* The shield background */
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 8px;
+    box-sizing: border-box;
     opacity: 0.95;
-  }
-
-  #brush-settings kbd, 
-  #brush-settings .slider-hint {
-    display: none !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
   }
 
   .dpad-btn {
     position: absolute !important;
-    width: 42px !important;
-    height: 42px !important;
-    background: rgba(15, 20, 30, 0.5);
+    width: 44px !important;
+    height: 44px !important;
+    background: rgba(15, 20, 30, 0.6);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -643,13 +646,14 @@ input[type="range"]::-moz-range-thumb {
     font-size: 1rem;
     color: white;
     pointer-events: auto;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    transition: all 0.1s ease;
   }
   
-  .dpad-up { top: 0; left: 44px; }
-  .dpad-down { bottom: 0; left: 44px; }
-  .dpad-left { left: 0; top: 44px; }
-  .dpad-right { right: 0; top: 44px; }
+  .dpad-up { top: 8px; left: 50px; }
+  .dpad-down { bottom: 8px; left: 50px; }
+  .dpad-left { left: 8px; top: 50px; }
+  .dpad-right { right: 8px; top: 50px; }
 
   .tool-btn:active {
     transform: scale(0.95);

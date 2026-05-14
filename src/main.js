@@ -134,8 +134,11 @@ const ui = new UI({
   onToggleSkierMode() { toggleSkierMode(); },
   onResetCamera() { scene.resetCamera(); },
   onMobileControl(dir, active) {
-    const keyMap = { 'up': 'ArrowUp', 'down': 'ArrowDown', 'left': 'ArrowLeft', 'right': 'ArrowRight' };
-    playerSkier.keys[keyMap[dir]] = active;
+    // Map D-pad directions to skier control keys
+    const skierKeyMap = { 'up': 'forward', 'down': 'brake', 'left': 'left', 'right': 'right' };
+    if (playerSkier._keys) {
+      playerSkier._keys[skierKeyMap[dir]] = active;
+    }
     mobileMovement[dir] = active;
   },
   onToggleTrails(checked) {

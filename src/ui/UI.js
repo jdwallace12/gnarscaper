@@ -27,12 +27,14 @@ export class UI {
       
       const handleStart = (e) => {
         e.preventDefault();
+        console.log(`D-Pad press: ${d.key}`);
         if (this.callbacks.onMobileControl) this.callbacks.onMobileControl(d.key, true);
         btn.classList.add('active');
       };
       
       const handleEnd = (e) => {
         e.preventDefault();
+        console.log(`D-Pad release: ${d.key}`);
         if (this.callbacks.onMobileControl) this.callbacks.onMobileControl(d.key, false);
         btn.classList.remove('active');
       };
