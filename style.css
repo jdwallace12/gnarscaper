@@ -48,6 +48,10 @@ body {
   font-family: var(--font);
   background: #060a14;
   color: var(--text);
+  /* Prevent text selection and long-press menus on mobile */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 button, input, select, textarea {
@@ -708,7 +712,7 @@ input[type="range"]::-moz-range-thumb {
 
   /* HUD: Minimalist for small screens */
   #skier-hud {
-    bottom: calc(40vh + 16px); /* Float above the bottom sheet */
+    bottom: 32px; /* Move to bottom instead of floating above the hidden bottom sheet */
   }
 
   .skier-hud-speed {
@@ -737,6 +741,12 @@ input[type="range"]::-moz-range-thumb {
   input[type="range"]::-webkit-slider-thumb {
     width: 24px;
     height: 24px;
+  }
+
+  /* Hide keyboard shortcut hints on mobile */
+  .slider-hint, 
+  kbd {
+    display: none !important;
   }
 }
 
