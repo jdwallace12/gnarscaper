@@ -489,6 +489,7 @@ export class UI {
 
     if (hintText) {
       const hint = document.createElement('div');
+      hint.className = 'slider-hint';
       hint.innerHTML = hintText;
       hint.style.fontSize = '0.65rem';
       hint.style.color = 'var(--text-dim)';

@@ -91,13 +91,17 @@ button, input, select, textarea {
   display: flex;
   flex-direction: row;
   align-items: center;
+  flex: 1; /* Fill available space */
+  margin-right: 32px;
 }
 
 #brush-sliders-container {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 20px;
+  gap: 32px;
+  flex: 1;
+  justify-content: flex-start;
 }
 
 #mobile-dpad {
@@ -126,6 +130,8 @@ button, input, select, textarea {
   flex-direction: row;
   align-items: center;
   gap: 16px;
+  flex: 1; /* Stretch to fill space */
+  min-width: 120px;
 }
 
 #topbar .slider-group label {
@@ -134,12 +140,13 @@ button, input, select, textarea {
   font-size: 0.75rem;
   color: var(--text-dim);
   font-weight: 600;
+  flex: 0 0 auto; /* Label doesn't stretch */
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
 
-#topbar input[type="range"] {
-  width: 100px;
+#topbar .slider-group input[type="range"] {
+  flex: 1; /* Slider track fills the rest of the group */
   height: 4px;
 }
 
@@ -617,7 +624,7 @@ input[type="range"]::-moz-range-thumb {
   }
 
   #brush-settings kbd, 
-  #brush-settings .slider-group span:last-child {
+  #brush-settings .slider-hint {
     display: none !important;
   }
 
