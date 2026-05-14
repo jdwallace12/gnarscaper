@@ -675,6 +675,12 @@ input[type="range"]::-moz-range-thumb {
     font-size: 0.7rem;
     padding: 0 8px;
     height: 34px;
+    min-width: 80px; /* Ensure buttons don't get too small */
+  }
+
+  .history-row {
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
   /* Sidebar: Transitions to a "Bottom Sheet" */
@@ -693,6 +699,7 @@ input[type="range"]::-moz-range-thumb {
     padding: 12px 16px;
     gap: 4px;
     box-shadow: 0 -10px 40px rgba(0,0,0,0.4);
+    overflow-x: hidden;
   }
 
   .sidebar-title { display: none; }
