@@ -417,16 +417,19 @@ input[type="range"]::-moz-range-thumb {
 .ski-mode-btn {
   background: #0f172a;
   color: white;
-  border: 1.5px solid #38bdf8;
-  padding: 8px 18px;
-  border-radius: 12px;
-  font-weight: 800;
-  font-size: 0.8rem;
+  border: 1px solid #38bdf8;
+  padding: 0 16px;
+  height: 38px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
   display: flex;
   align-items: center;
+  justify-content: center;
+  line-height: 1;
   gap: 10px;
   white-space: nowrap;
   text-transform: uppercase;

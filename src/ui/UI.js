@@ -45,20 +45,33 @@ export class UI {
     skiBtn.className = 'ski-mode-btn';
     skiBtn.innerHTML = '🎿 Ski Mode';
     skiBtn.title = 'Enter 3rd person skiing! (ESC to exit)';
+    skiBtn.style.height = '38px';
+    skiBtn.style.display = 'flex';
+    skiBtn.style.alignItems = 'center';
+    skiBtn.style.justifyContent = 'center';
+    skiBtn.style.lineHeight = '1';
     skiBtn.addEventListener('click', () => {
       if (this.callbacks.onToggleSkierMode) this.callbacks.onToggleSkierMode();
     });
     // Reset Camera Button
     const resetCamBtn = document.createElement('button');
     resetCamBtn.className = 'history-btn'; 
-    resetCamBtn.style.padding = '8px 14px';
+    resetCamBtn.style.padding = '0 16px';
+    resetCamBtn.style.height = '38px';
+    resetCamBtn.style.borderRadius = '10px';
+    resetCamBtn.style.fontWeight = '700';
     resetCamBtn.style.fontSize = '0.75rem';
+    resetCamBtn.style.cursor = 'pointer';
+    resetCamBtn.style.transition = 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    resetCamBtn.style.boxShadow = '0 0 15px rgba(56, 189, 248, 0.2)';
     resetCamBtn.style.display = 'flex';
     resetCamBtn.style.alignItems = 'center';
-    resetCamBtn.style.gap = '8px';
-    resetCamBtn.style.cursor = 'pointer';
+    resetCamBtn.style.justifyContent = 'center';
+    resetCamBtn.style.lineHeight = '1';
+    resetCamBtn.style.gap = '10px';
     resetCamBtn.style.pointerEvents = 'auto';
-    resetCamBtn.innerHTML = '<span style="font-size:1.1rem">🔄</span> Reset View';
+    resetCamBtn.style.whiteSpace = 'nowrap';
+    resetCamBtn.innerHTML = '<span style="font-size:1.1rem; line-height:1">🔄</span> Reset View';
     resetCamBtn.title = 'Reset camera to starting position';
     resetCamBtn.addEventListener('click', (e) => {
       e.stopPropagation();
