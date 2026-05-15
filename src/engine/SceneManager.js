@@ -48,6 +48,7 @@ export class SceneManager {
     this.controls.panSpeed = 2.0;
     this.controls.screenSpacePanning = false;
     this.controls.target.set(0, 0, 0);
+    this.controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
     this.controls.listenToKeyEvents(window);
     this.controls.keyPanSpeed = 50.0;
 
