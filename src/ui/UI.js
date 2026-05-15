@@ -48,6 +48,48 @@ export class UI {
       
       dpad.appendChild(btn);
     });
+
+    const actions = document.createElement('div');
+    actions.id = 'mobile-actions';
+    parent.appendChild(actions);
+
+    const actionBtns = [
+      { id: 'exit', icon: '❌', key: 'exit' },
+      { id: 'jump', icon: '🚀', key: 'jump' },
+      { id: 'parachute', icon: '🪂', key: 'parachute' }
+    ];
+
+    actionBtns.forEach(a => {
+      const btn = document.createElement('button');
+      btn.className = `action-btn action-${a.id}`;
+      btn.innerHTML = a.icon;
+      
+      const handleStart = (e) => {
+        e.preventDefault();
+        if (a.key === 'exit') {
+          if (this.callbacks.onToggleSkierMode) this.callbacks.onToggleSkierMode();
+          return;
+        }
+        if (this.callbacks.onMobileControl) this.callbacks.onMobileControl(a.key, true);
+        btn.classList.add('active');
+      };
+      
+      const handleEnd = (e) => {
+        e.preventDefault();
+        if (a.key === 'exit') return;
+        if (this.callbacks.onMobileControl) this.callbacks.onMobileControl(a.key, false);
+        btn.classList.remove('active');
+      };
+
+      btn.addEventListener('mousedown', handleStart);
+      btn.addEventListener('mouseup', handleEnd);
+      btn.addEventListener('mouseleave', handleEnd);
+      btn.addEventListener('touchstart', handleStart, { passive: false });
+      btn.addEventListener('touchend', handleEnd);
+      btn.addEventListener('touchcancel', handleEnd);
+      
+      actions.appendChild(btn);
+    });
   }
 
   setUndoRedoState(canUndo, canRedo) {
@@ -627,6 +669,11 @@ export class UI {
     const topbar = document.getElementById('topbar');
     if (sidebar) sidebar.style.display = show ? 'none' : '';
     if (topbar) topbar.style.display = show ? 'none' : '';
+
+    const dpad = document.getElementById('mobile-dpad');
+    const actions = document.getElementById('mobile-actions');
+    if (dpad) dpad.classList.toggle('in-ski-mode', show);
+    if (actions) actions.classList.toggle('in-ski-mode', show);
   }
 
   updateSkierSpeed(speed) {

@@ -616,6 +616,10 @@ input[type="range"]::-moz-range-thumb {
   }
 
   #mobile-dpad {
+    display: none;
+  }
+  
+  #mobile-dpad.in-ski-mode {
     display: block;
     position: fixed !important;
     bottom: 48vh;
@@ -658,6 +662,45 @@ input[type="range"]::-moz-range-thumb {
   .dpad-down { bottom: 8px; left: 50px; }
   .dpad-left { left: 8px; top: 50px; }
   .dpad-right { right: 8px; top: 50px; }
+
+  #mobile-actions {
+    display: none;
+  }
+
+  #mobile-actions.in-ski-mode {
+    display: flex;
+    flex-direction: row;
+    gap: 16px;
+    position: fixed !important;
+    bottom: 48vh;
+    right: 176px; /* Right next to the D-Pad which is 144px wide + 16px margin */
+    z-index: 300;
+    pointer-events: none;
+  }
+
+  .action-btn {
+    width: 60px;
+    height: 60px;
+    background: rgba(15, 20, 30, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: white;
+    pointer-events: auto;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    transition: all 0.1s ease;
+  }
+  
+  .action-btn.active {
+    background: var(--accent);
+    border-color: white;
+    transform: scale(0.95);
+  }
 
   .tool-btn:active {
     transform: scale(0.95);
@@ -771,7 +814,7 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 /* ---- Mobile D-Pad ---- */
-#mobile-dpad {
+#mobile-dpad, #mobile-actions {
   display: none;
   position: fixed;
   bottom: 24px;

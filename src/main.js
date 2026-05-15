@@ -144,11 +144,13 @@ const ui = new UI({
   onResetCamera() { scene.resetCamera(); },
   onMobileControl(dir, active) {
     // Map D-pad directions to skier control keys
-    const skierKeyMap = { 'up': 'forward', 'down': 'brake', 'left': 'left', 'right': 'right' };
-    if (playerSkier._keys) {
+    const skierKeyMap = { 'up': 'forward', 'down': 'brake', 'left': 'left', 'right': 'right', 'jump': 'jump', 'parachute': 'paraglide' };
+    if (playerSkier._keys && skierKeyMap[dir]) {
       playerSkier._keys[skierKeyMap[dir]] = active;
     }
-    mobileMovement[dir] = active;
+    if (mobileMovement[dir] !== undefined) {
+      mobileMovement[dir] = active;
+    }
   },
   onToggleTrails(checked) {
     skiers.setTrailsVisible(checked);
