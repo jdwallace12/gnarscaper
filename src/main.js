@@ -77,8 +77,17 @@ const ui = new UI({
   onToolChange(key) {
     currentToolKey = key;
     chairliftStartPoint = null; // Reset partial chairlifts on tool switch
-    brush.setTool(TOOLS[key]);
-    brush.updateCursorColor(TOOLS[key].color);
+    const tool = TOOLS[key];
+    brush.setTool(tool);
+    brush.updateCursorColor(tool.color);
+
+    if (tool.isPan) {
+      scene.controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+      scene.controls.touches.ONE = THREE.TOUCH.PAN;
+    } else {
+      scene.controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+      scene.controls.touches.ONE = THREE.TOUCH.ROTATE;
+    }
   },
   onBrushRadius(v) { brush.radius = v; },
   onBrushStrength(v) { brush.strength = v; },
@@ -438,11 +447,14 @@ function handleInteractStart(e) {
 
   if (!brush.intersectionPoint) return;
 
+  const tool = TOOLS[currentToolKey];
+  if (tool && tool.isCamera) {
+    return; // Leave scene.controls.enabled = true so OrbitControls can pan/rotate
+  }
+
   // Save snapshot before painting starts
   history.push(terrain.snapshot());
   ui.setUndoRedoState(history.canUndo(), history.canRedo());
-
-  const tool = TOOLS[currentToolKey];
 
   if (tool.isTree) {
     const worldRadius = (brush.radius / terrain.resolution) * terrain.size;

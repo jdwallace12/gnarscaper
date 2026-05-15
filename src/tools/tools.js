@@ -6,6 +6,27 @@
 import { fbm, ridgedNoise } from '../engine/noise.js';
 
 export const TOOLS = {
+  camera: {
+    name: 'Rotate Camera',
+    icon: '🔄',
+    color: '#9ca3af',
+    cursor: 'grab',
+    isBrush: false,
+    isCamera: true,
+    category: 'Camera',
+  },
+
+  pan_camera: {
+    name: 'Pan Camera',
+    icon: '🖐️',
+    color: '#9ca3af',
+    cursor: 'grab',
+    isBrush: false,
+    isCamera: true,
+    isPan: true,
+    category: 'Camera',
+  },
+  
   raise: {
     name: 'Raise',
     icon: '⛰️',

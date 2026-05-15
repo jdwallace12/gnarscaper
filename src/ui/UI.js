@@ -144,7 +144,7 @@ export class UI {
     sidebar.appendChild(toolLabel);
 
     // Group tools by category
-    const categories = ['Skiing', 'Mountains', 'Utility', 'Features', 'Nature'];
+    const categories = ['Camera', 'Skiing', 'Mountains', 'Utility', 'Features', 'Nature'];
     this.orderedToolKeys = [];
     
     // Define all available shortcut keys in order

@@ -75,19 +75,24 @@ export class BrushEngine {
     if (hits.length > 0 && this.enabled) {
       const pt = hits[0].point;
       this.intersectionPoint = pt;
-      this.cursorMesh.visible = true;
       
-      if (this.gridMesh) {
-        this.gridMesh.visible = this.painting;
-        if (this.painting) {
-          this._updateTopoMesh();
+      if (this.tool && this.tool.isCamera) {
+        this.cursorMesh.visible = false;
+      } else {
+        this.cursorMesh.visible = true;
+        
+        if (this.gridMesh) {
+          this.gridMesh.visible = this.painting;
+          if (this.painting) {
+            this._updateTopoMesh();
+          }
         }
+        
+        this.cursorMesh.position.set(pt.x, pt.y + 0.2, pt.z);
+        // scale cursor to match brush radius in world units
+        const worldRadius = (this.radius / this.terrain.resolution) * this.terrain.size;
+        this.cursorMesh.scale.setScalar(worldRadius);
       }
-      
-      this.cursorMesh.position.set(pt.x, pt.y + 0.2, pt.z);
-      // scale cursor to match brush radius in world units
-      const worldRadius = (this.radius / this.terrain.resolution) * this.terrain.size;
-      this.cursorMesh.scale.setScalar(worldRadius);
     } else {
       this.cursorMesh.visible = false;
       this.intersectionPoint = null;
