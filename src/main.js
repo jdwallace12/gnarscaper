@@ -73,6 +73,16 @@ const brush = new BrushEngine(terrain, scene.camera, canvas);
 brush.setTool(TOOLS[currentToolKey]);
 scene.add(brush.cursorMesh);
 
+const aimCursorGroup = new THREE.Group();
+const aimCrossMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthTest: false });
+const vBar = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 1.2), aimCrossMat);
+const hBar = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.2), aimCrossMat);
+aimCursorGroup.add(vBar, hBar);
+aimCursorGroup.visible = false;
+aimCursorGroup.renderOrder = 999; // Always render on top
+const aimCursor = aimCursorGroup;
+scene.add(aimCursor);
+
 const ui = new UI({
   onToolChange(key) {
     currentToolKey = key;
@@ -518,6 +528,42 @@ let physicsAccumulator = 0;
 function animate() {
   requestAnimationFrame(animate);
   const dt = scene.getDelta();
+
+  // --- Chairlift Interactions ---
+  if (isSkierMode && playerSkier.active && playerSkier.state === 'riding') {
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), scene.camera);
+    const intersects = raycaster.intersectObject(terrain.mesh);
+    
+    if (intersects.length > 0) {
+      aimCursor.visible = true;
+      aimCursor.position.copy(intersects[0].point);
+      
+      // Face the camera perfectly so it acts like a 2D crosshair
+      aimCursor.quaternion.copy(scene.camera.quaternion);
+      
+      // Scale dot based on distance so it stays visible when aiming far away
+      const dist = scene.camera.position.distanceTo(aimCursor.position);
+      aimCursor.scale.setScalar(Math.max(1.0, dist / 25.0));
+
+      if (playerSkier._keys.jump) {
+        playerSkier._keys.jump = false; // consume
+        skiers.spawn(intersects[0].point.x, intersects[0].point.z);
+      }
+    } else {
+      aimCursor.visible = false;
+    }
+  } else {
+    aimCursor.visible = false;
+  }
+
+  // Update HUD text if state changed
+  if (isSkierMode && playerSkier.active) {
+    if (playerSkier.state !== window.lastSkierState) {
+      ui.setSkierControlsText(playerSkier.state);
+      window.lastSkierState = playerSkier.state;
+    }
+  }
 
   // --- Physics & Simulation Loop ---
   physicsAccumulator += Math.min(dt, 0.05); // Cap 

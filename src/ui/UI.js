@@ -410,7 +410,7 @@ export class UI {
         <span class="skier-hud-value" id="skier-speed">0</span>
         <span class="skier-hud-unit">mph</span>
       </div>
-      <div class="skier-hud-controls">
+      <div class="skier-hud-controls" id="skier-controls">
         <span><b>←/→</b> Steer · <b>↑</b> Push · <b>↓</b> Brake · <b>W/S</b> Look · <b>Space</b> Jump · <b>X</b> Parachute</span>
         <span style="opacity:0.6">Press <b>ESC</b> to exit</span>
       </div>
@@ -681,6 +681,22 @@ export class UI {
     if (el) {
       // Convert to mph feel
       el.textContent = Math.round(speed * 5.0);
+    }
+  }
+
+  setSkierControlsText(state) {
+    const el = document.getElementById('skier-controls');
+    if (!el) return;
+    if (state === 'riding') {
+      el.innerHTML = `
+        <span><b>←/→/W/S</b> Look Around · <b>Space</b> Drop Skier</span>
+        <span style="opacity:0.6">Press <b>ESC</b> to exit</span>
+      `;
+    } else {
+      el.innerHTML = `
+        <span><b>←/→</b> Steer · <b>↑</b> Push · <b>↓</b> Brake · <b>W/S</b> Look · <b>Space</b> Jump · <b>X</b> Parachute</span>
+        <span style="opacity:0.6">Press <b>ESC</b> to exit</span>
+      `;
     }
   }
 

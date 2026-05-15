@@ -493,16 +493,33 @@ export class Skiers {
         s.speed = Math.sqrt(s.vx * s.vx + s.vz * s.vz);
       }
 
-      // Stuck detection: require being slow for 3 seconds before fully stopping
-      if (s.speed < minSpeed && gradMag < 0.003) {
+      // Stuck detection: require being slow for a bit
+      if (s.speed < 0.1 && gradMag < 0.01) {
         s.stuckTime = (s.stuckTime || 0) + dt;
-        if (s.stuckTime > 3.0) {
+        if (s.stuckTime > 1.5) {
           s.stuckTime = 0;
-          this._handleStop(s, chairlifts);
-          continue;
+          s.stuckCount = (s.stuckCount || 0) + 1;
+          
+          if (s.stuckCount > 4) {
+            // Completely trapped after 4 hops, give up
+            this._handleStop(s, chairlifts);
+            continue;
+          }
+
+          // Desperate hop out of the flat/bowl!
+          s.grounded = false;
+          s.vy = 6.0; // Hop up
+          
+          // Push in a random direction to try and find a slope
+          const escapeAngle = Math.random() * Math.PI * 2;
+          const hopForce = 6.0;
+          s.vx = Math.cos(escapeAngle) * hopForce;
+          s.vz = Math.sin(escapeAngle) * hopForce;
+          s.speed = Math.sqrt(s.vx * s.vx + s.vz * s.vz);
         }
       } else {
         s.stuckTime = 0;
+        if (s.speed > 2.0) s.stuckCount = 0; // Reset if they get moving again
       }
 
       s.timeAlive += dt;
