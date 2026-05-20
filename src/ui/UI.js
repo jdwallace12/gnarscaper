@@ -174,7 +174,7 @@ export class UI {
     // Title
     const title = document.createElement('div');
     title.className = 'sidebar-title';
-    title.innerHTML = '<span class="logo-icon">🏔️</span> LandScraper';
+    title.innerHTML = '<span class="logo-icon">🏔️</span> GnarScaper';
     sidebar.appendChild(title);
 
     // Subtitle

@@ -281,7 +281,7 @@ async function doSaveMap(forcePicker = false) {
     try {
       if (!currentFileHandle || forcePicker) {
         currentFileHandle = await window.showSaveFilePicker({
-          suggestedName: 'landscraper_map.json',
+          suggestedName: 'gnarscaper_map.json',
           types: [{
             description: 'JSON Files',
             accept: { 'application/json': ['.json'] },
@@ -308,7 +308,7 @@ async function doSaveMap(forcePicker = false) {
   
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'landscraper_map.json';
+  a.download = 'gnarscaper_map.json';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
