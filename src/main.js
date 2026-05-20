@@ -442,8 +442,9 @@ function enterSkierModeAt(wx, wz) {
 
 function exitSkierMode() {
   if (!isSkierMode) return;
+  const skierPos = new THREE.Vector3(playerSkier.wx, playerSkier.wy, playerSkier.wz);
   playerSkier.despawn();
-  scene.exitSkierMode();
+  scene.exitSkierMode(skierPos);
   isSkierMode = false;
   brush.enabled = true;
   brush.cursorMesh.visible = true;

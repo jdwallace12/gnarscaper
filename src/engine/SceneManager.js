@@ -135,8 +135,7 @@ export class SceneManager {
     this.controls.enabled = false;
   }
 
-  /** Exit skier camera mode, restore previous view */
-  exitSkierMode() {
+  exitSkierMode(skierPos = null) {
     this._skierMode = false;
     this._currentLookAt = null;
 
@@ -157,7 +156,25 @@ export class SceneManager {
 
     // Restore OrbitControls
     this.controls.enabled = true;
-    if (this._savedCamPos && isFinite(this._savedCamPos.x) && isFinite(this._savedTarget.x)) {
+    
+    if (skierPos && isFinite(skierPos.x) && isFinite(skierPos.y) && isFinite(skierPos.z)) {
+      // Focus OrbitControls target on the skier's final position
+      this.controls.target.copy(skierPos);
+      
+      // Position the camera slightly behind and above the skier's final position
+      this.camera.position.set(
+        skierPos.x - 40,
+        skierPos.y + 50,
+        skierPos.z + 70
+      );
+      
+      this.camera.up.set(0, 1, 0);
+      this.camera.lookAt(this.controls.target);
+      
+      this.controls.update(); // Sync OrbitControls
+      this.camera.updateProjectionMatrix();
+      this.camera.updateMatrixWorld();
+    } else if (this._savedCamPos && isFinite(this._savedCamPos.x) && isFinite(this._savedTarget.x)) {
       this.camera.position.copy(this._savedCamPos);
       this.controls.target.copy(this._savedTarget);
       

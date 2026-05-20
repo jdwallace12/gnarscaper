@@ -180,7 +180,7 @@ export class UI {
     // Subtitle
     const sub = document.createElement('div');
     sub.className = 'sidebar-subtitle';
-    sub.textContent = 'Terrain Sculptor and Ski Simulator';
+    sub.textContent = 'Create and Ski your own gnarscapes';
     sidebar.appendChild(sub);
 
     // Divider
