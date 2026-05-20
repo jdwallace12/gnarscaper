@@ -95,6 +95,22 @@ export class PlayerSkier {
     this._onWater = false;
     this.water = null; // Reference to Water instance for wave surfing
 
+    // Climbing state
+    this.isClimbing = false;
+    this.climbPhase = 0;
+    this._climbWeight = 0.0;
+    this._lastClimbStep = 0;
+
+    this._torso = null;
+    this._head = null;
+    this._helmet = null;
+    this._leftLeg = null;
+    this._rightLeg = null;
+    this._leftSki = null;
+    this._rightSki = null;
+    this._leftPole = null;
+    this._rightPole = null;
+
     // Bind input handlers
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
@@ -165,6 +181,22 @@ export class PlayerSkier {
     this.targetLine = null;
     this.targetStation = null;
     this._waitingTime = 0;
+
+    // Reset climbing state
+    this.isClimbing = false;
+    this.climbPhase = 0;
+    this._climbWeight = 0.0;
+    this._lastClimbStep = 0;
+
+    this._torso = null;
+    this._head = null;
+    this._helmet = null;
+    this._leftLeg = null;
+    this._rightLeg = null;
+    this._leftSki = null;
+    this._rightSki = null;
+    this._leftPole = null;
+    this._rightPole = null;
 
     // Reset camera tracking state
     this.cameraHeading = undefined;
@@ -263,64 +295,120 @@ export class PlayerSkier {
       gradZ = 0;
     }
 
-    // Apply gravity acceleration
-    this.vx -= gradX * gravity * dt;
-    this.vz -= gradZ * gravity * dt;
+    const slopeDot = Math.sin(this.heading) * gradX + Math.cos(this.heading) * gradZ;
+    const forwardSpeed = this.vx * Math.sin(this.heading) + this.vz * Math.cos(this.heading);
 
-    // Steering logic
-    const maxTurnAccel = 16.0; // Strong edge bite for carving across the slope
-    const turnDamping = 0.94; // Higher damping to prevent spin-outs
-    const maxAngularVel = 2.5; // Cap rotation speed to prevent full spins
-    
-    this._steerInput = 0;
-    if (this._keys.left) { this.angularVelocity += maxTurnAccel * dt; this._steerInput = 1; }
-    if (this._keys.right) { this.angularVelocity -= maxTurnAccel * dt; this._steerInput = -1; }
-    
-    this.angularVelocity *= turnDamping;
-    // Clamp angular velocity so the skier can't spin around
-    this.angularVelocity = Math.max(-maxAngularVel, Math.min(maxAngularVel, this.angularVelocity));
-    this.heading += this.angularVelocity * dt;
-
-    // Downhill alignment: gently rotate heading toward the fall line when not steering.
-    // This prevents the skier from getting stuck sliding sideways on slopes.
-    // Skip on water — there is no fall line on a flat surface.
-    if (!this._keys.left && !this._keys.right && !overWater && !this.paragliding) {
-      const gradMag = Math.sqrt(gradX * gradX + gradZ * gradZ);
-      if (gradMag > 0.01) {
-        // Fall line = steepest downhill direction
-        const fallHeading = Math.atan2(-gradX, -gradZ);
-        let fallDiff = fallHeading - this.heading;
-        while (fallDiff < -Math.PI) fallDiff += Math.PI * 2;
-        while (fallDiff > Math.PI) fallDiff -= Math.PI * 2;
-        // Stronger pull on steeper slopes, gentle on flats
-        const alignStrength = Math.min(gradMag * 3.0, 1.5);
-        this.heading += fallDiff * alignStrength * dt;
+    // Transition to climbing mode:
+    // If player is grounded, pressing forward, facing uphill on a slope, and has very low speed uphill (or is sliding back)
+    if (this.grounded && this._keys.forward && slopeDot > 0.03 && forwardSpeed < 1.5) {
+      this.isClimbing = true;
+    }
+    // Transition out of climbing mode:
+    if (this.isClimbing) {
+      if (!this._keys.forward || slopeDot <= 0.01 || !this.grounded) {
+        this.isClimbing = false;
       }
     }
 
-    // Standard push force (W key)
-    if (this._keys.forward && this.grounded) {
-      const pushStrength = 1.5;
-      this.vx += Math.sin(this.heading) * pushStrength * dt;
-      this.vz += Math.cos(this.heading) * pushStrength * dt;
-    }
+    if (this.isClimbing) {
+      // Climbing Physics: Move slowly in heading direction
+      const climbSpeed = 2.6;
+      this.vx = Math.sin(this.heading) * climbSpeed;
+      this.vz = Math.cos(this.heading) * climbSpeed;
 
-    // Steering force: push velocity towards the heading direction
-    this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
-    if (this.speed > 0.1) {
-      const desiredX = Math.sin(this.heading) * this.speed;
-      const desiredZ = Math.cos(this.heading) * this.speed;
-      const steerStrength = Math.max(0.8, 4.0 - (this.speed * 0.05)); // Strong edge grip for cross-slope carving
+      // Gentle steering while climbing
+      const maxTurnAccel = 12.0;
+      const turnDamping = 0.94;
+      const maxAngularVel = 2.0;
+
+      this._steerInput = 0;
+      if (this._keys.left) { this.angularVelocity += maxTurnAccel * dt; this._steerInput = 1; }
+      if (this._keys.right) { this.angularVelocity -= maxTurnAccel * dt; this._steerInput = -1; }
+
+      this.angularVelocity *= turnDamping;
+      this.angularVelocity = Math.max(-maxAngularVel, Math.min(maxAngularVel, this.angularVelocity));
+      this.heading += this.angularVelocity * dt;
+
+      this.speed = climbSpeed;
+      this.climbPhase = (this.climbPhase || 0) + dt * 10.0;
+
+      // Trigger custom snow powder particles exactly when the skier's feet plant on each step
+      const stepInterval = Math.PI;
+      const currentStep = Math.floor(this.climbPhase / stepInterval);
+      if (currentStep !== this._lastClimbStep) {
+        this._lastClimbStep = currentStep;
+        const footSide = (currentStep % 2 === 0) ? 1 : -1;
+        const sinH = Math.sin(this.heading);
+        const cosH = Math.cos(this.heading);
+        // foot world position
+        const fx = this.wx + cosH * (footSide * 0.1) - sinH * 0.1;
+        const fz = this.wz - sinH * (footSide * 0.1) - cosH * 0.1;
+
+        // Emit snow puff
+        for (let i = 0; i < 2; i++) {
+          this._emitSnow(fx, this.y, fz);
+        }
+      }
+    } else {
+      // Standard Skiing Physics
+      this.vx -= gradX * gravity * dt;
+      this.vz -= gradZ * gravity * dt;
+
+      // Steering logic
+      const maxTurnAccel = 16.0; // Strong edge bite for carving across the slope
+      const turnDamping = 0.94; // Higher damping to prevent spin-outs
+      const maxAngularVel = 2.5; // Cap rotation speed to prevent full spins
       
-      this.vx += (desiredX - this.vx) * steerStrength * dt;
-      this.vz += (desiredZ - this.vz) * steerStrength * dt;
-    }
+      this._steerInput = 0;
+      if (this._keys.left) { this.angularVelocity += maxTurnAccel * dt; this._steerInput = 1; }
+      if (this._keys.right) { this.angularVelocity -= maxTurnAccel * dt; this._steerInput = -1; }
+      
+      this.angularVelocity *= turnDamping;
+      // Clamp angular velocity so the skier can't spin around
+      this.angularVelocity = Math.max(-maxAngularVel, Math.min(maxAngularVel, this.angularVelocity));
+      this.heading += this.angularVelocity * dt;
 
-    // Forward push (ArrowUp)
-    if (this._keys.forward) {
-      const pushForce = 15.0; // Stronger push for flats
-      this.vx += Math.sin(this.heading) * pushForce * dt;
-      this.vz += Math.cos(this.heading) * pushForce * dt;
+      // Downhill alignment: gently rotate heading toward the fall line when not steering.
+      // This prevents the skier from getting stuck sliding sideways on slopes.
+      // Skip on water — there is no fall line on a flat surface.
+      if (!this._keys.left && !this._keys.right && !overWater && !this.paragliding) {
+        const gradMag = Math.sqrt(gradX * gradX + gradZ * gradZ);
+        if (gradMag > 0.01) {
+          // Fall line = steepest downhill direction
+          const fallHeading = Math.atan2(-gradX, -gradZ);
+          let fallDiff = fallHeading - this.heading;
+          while (fallDiff < -Math.PI) fallDiff += Math.PI * 2;
+          while (fallDiff > Math.PI) fallDiff -= Math.PI * 2;
+          // Stronger pull on steeper slopes, gentle on flats
+          const alignStrength = Math.min(gradMag * 3.0, 1.5);
+          this.heading += fallDiff * alignStrength * dt;
+        }
+      }
+
+      // Standard push force (W key)
+      if (this._keys.forward && this.grounded) {
+        const pushStrength = 1.5;
+        this.vx += Math.sin(this.heading) * pushStrength * dt;
+        this.vz += Math.cos(this.heading) * pushStrength * dt;
+      }
+
+      // Steering force: push velocity towards the heading direction
+      this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
+      if (this.speed > 0.1) {
+        const desiredX = Math.sin(this.heading) * this.speed;
+        const desiredZ = Math.cos(this.heading) * this.speed;
+        const steerStrength = Math.max(0.8, 4.0 - (this.speed * 0.05)); // Strong edge grip for cross-slope carving
+        
+        this.vx += (desiredX - this.vx) * steerStrength * dt;
+        this.vz += (desiredZ - this.vz) * steerStrength * dt;
+      }
+
+      // Forward push (ArrowUp)
+      if (this._keys.forward) {
+        const pushForce = 15.0; // Stronger push for flats
+        this.vx += Math.sin(this.heading) * pushForce * dt;
+        this.vz += Math.cos(this.heading) * pushForce * dt;
+      }
     }
 
     // Camera pitch (W/S keys)
@@ -713,11 +801,63 @@ export class PlayerSkier {
     const targetLean = -(this.angularVelocity || 0) * 0.15;
     if (this._currentLean === undefined) this._currentLean = 0;
     this._currentLean += (targetLean - this._currentLean) * smoothFactor;
+    // Lerp climb weight smoothly
+    if (this._climbWeight === undefined) this._climbWeight = 0.0;
+    const targetClimbWeight = this.isClimbing ? 1.0 : 0.0;
+    this._climbWeight += (targetClimbWeight - this._climbWeight) * smoothFactor;
+
     // Visual rotation: Tilt skier based on steering + airtime
     const lean = -this._steerInput * 0.4;
-    const targetPitch = (this.cameraPitch || 0) * 0.5 - (this.vy * 0.02);
+    let targetPitch = (this.cameraPitch || 0) * 0.5 - (this.vy * 0.02);
+    if (this.isClimbing) {
+      targetPitch += 0.4 * this._climbWeight; // Lean forward into the slope
+    }
     this.mesh.rotation.z = lean;
     this.mesh.rotation.x = targetPitch;
+
+    // Herringbone side-stepping animation on individual mesh parts
+    if (this._leftSki && this._rightSki && this._leftLeg && this._rightLeg && this._leftPole && this._rightPole && this._torso) {
+      const phase = this.climbPhase || 0;
+      
+      const leftVal = Math.sin(phase) * this._climbWeight;
+      const rightVal = Math.sin(phase + Math.PI) * this._climbWeight;
+      const leftLift = Math.max(0, Math.sin(phase)) * this._climbWeight;
+      const rightLift = Math.max(0, Math.sin(phase + Math.PI)) * this._climbWeight;
+      
+      const splay = 0.55 * this._climbWeight;
+
+      // Update Skis splay, lift and stride
+      this._leftSki.rotation.y = splay;
+      this._rightSki.rotation.y = -splay;
+      this._leftSki.position.z = leftVal * 0.15;
+      this._rightSki.position.z = rightVal * 0.15;
+      this._leftSki.position.y = 0.015 + leftLift * 0.12;
+      this._rightSki.position.y = 0.015 + rightLift * 0.12;
+
+      // Update Legs stride and lift
+      this._leftLeg.position.z = leftVal * 0.15;
+      this._rightLeg.position.z = rightVal * 0.15;
+      this._leftLeg.position.y = 0.12 + leftLift * 0.06;
+      this._rightLeg.position.y = 0.12 + rightLift * 0.06;
+
+      // Update Poles plant in opposition to skis, tilt outward slightly
+      this._leftPole.position.z = rightVal * 0.2;
+      this._leftPole.position.y = 0.22 + rightLift * 0.05;
+      this._leftPole.rotation.x = -rightVal * 0.3;
+      this._leftPole.rotation.z = -0.2 * (1 - this._climbWeight) - 0.35 * this._climbWeight;
+
+      this._rightPole.position.z = leftVal * 0.2;
+      this._rightPole.position.y = 0.22 + leftLift * 0.05;
+      this._rightPole.rotation.x = -leftVal * 0.3;
+      this._rightPole.rotation.z = 0.2 * (1 - this._climbWeight) + 0.35 * this._climbWeight;
+
+      // Torso & Head Bobbing & Swaying
+      this._torso.position.x = leftVal * 0.02;
+      this._torso.rotation.y = leftVal * 0.1;
+      this._torso.rotation.z = leftVal * 0.05;
+      if (this._head) this._head.position.x = leftVal * 0.02;
+      if (this._helmet) this._helmet.position.x = leftVal * 0.02;
+    }
 
     // Toggle Parachute visibility and animation
     if (this._parachute) {
@@ -1141,6 +1281,7 @@ export class PlayerSkier {
     torso.position.y = 0.32;
     torso.castShadow = true;
     group.add(torso);
+    this._torso = torso;
 
     // Head
     const head = new THREE.Mesh(
@@ -1150,6 +1291,7 @@ export class PlayerSkier {
     head.position.y = 0.5;
     head.castShadow = true;
     group.add(head);
+    this._head = head;
 
     // Helmet
     const helmet = new THREE.Mesh(
@@ -1159,39 +1301,64 @@ export class PlayerSkier {
     helmet.position.y = 0.5;
     helmet.castShadow = true;
     group.add(helmet);
+    this._helmet = helmet;
 
     // Legs
-    for (const side of [-1, 1]) {
-      const leg = new THREE.Mesh(
-        new THREE.BoxGeometry(0.05, 0.20, 0.06),
-        this._pantsMat
-      );
-      leg.position.set(side * 0.04, 0.12, 0);
-      leg.castShadow = true;
-      group.add(leg);
-    }
+    const leftLeg = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.20, 0.06),
+      this._pantsMat
+    );
+    leftLeg.position.set(-0.04, 0.12, 0);
+    leftLeg.castShadow = true;
+    group.add(leftLeg);
+    this._leftLeg = leftLeg;
+
+    const rightLeg = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.20, 0.06),
+      this._pantsMat
+    );
+    rightLeg.position.set(0.04, 0.12, 0);
+    rightLeg.castShadow = true;
+    group.add(rightLeg);
+    this._rightLeg = rightLeg;
 
     // Skis
-    for (const side of [-1, 1]) {
-      const ski = new THREE.Mesh(
-        new THREE.BoxGeometry(0.09, 0.03, 0.7),
-        this._skiMat
-      );
-      ski.position.set(side * 0.09, 0.015, 0);
-      ski.castShadow = true;
-      group.add(ski);
-    }
+    const leftSki = new THREE.Mesh(
+      new THREE.BoxGeometry(0.09, 0.03, 0.7),
+      this._skiMat
+    );
+    leftSki.position.set(-0.09, 0.015, 0);
+    leftSki.castShadow = true;
+    group.add(leftSki);
+    this._leftSki = leftSki;
+
+    const rightSki = new THREE.Mesh(
+      new THREE.BoxGeometry(0.09, 0.03, 0.7),
+      this._skiMat
+    );
+    rightSki.position.set(0.09, 0.015, 0);
+    rightSki.castShadow = true;
+    group.add(rightSki);
+    this._rightSki = rightSki;
 
     // Poles
-    for (const side of [-1, 1]) {
-      const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.012, 0.012, 0.45, 4),
-        this._skiMat
-      );
-      pole.position.set(side * 0.18, 0.22, 0);
-      pole.rotation.z = side * 0.2;
-      group.add(pole);
-    }
+    const leftPole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.012, 0.45, 4),
+      this._skiMat
+    );
+    leftPole.position.set(-0.18, 0.22, 0);
+    leftPole.rotation.z = -0.2;
+    group.add(leftPole);
+    this._leftPole = leftPole;
+
+    const rightPole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.012, 0.45, 4),
+      this._skiMat
+    );
+    rightPole.position.set(0.18, 0.22, 0);
+    rightPole.rotation.z = 0.2;
+    group.add(rightPole);
+    this._rightPole = rightPole;
 
     // Parachute
     const chuteGroup = new THREE.Group();

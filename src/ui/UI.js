@@ -676,11 +676,16 @@ export class UI {
     if (actions) actions.classList.toggle('in-ski-mode', show);
   }
 
-  updateSkierSpeed(speed) {
+  updateSkierSpeed(speed, isClimbing = false) {
     const el = document.getElementById('skier-speed');
     if (el) {
       // Convert to mph feel
       el.textContent = Math.round(speed * 5.0);
+    }
+    const labelEl = document.querySelector('.skier-hud-label');
+    if (labelEl) {
+      labelEl.textContent = isClimbing ? 'CLIMBING' : 'SPEED';
+      labelEl.style.color = isClimbing ? '#ffb703' : ''; // Sleek gold color for climbing!
     }
   }
 
