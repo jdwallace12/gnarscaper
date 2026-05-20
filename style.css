@@ -133,9 +133,10 @@ button, input, select, textarea {
 #topbar .slider-group {
   flex-direction: row;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
   flex: 1; /* Stretch to fill space */
   min-width: 120px;
+  margin-bottom: 0;
 }
 
 #topbar .slider-group label {
@@ -325,7 +326,8 @@ button, input, select, textarea {
 .slider-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .slider-group label {
