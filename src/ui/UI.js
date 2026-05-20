@@ -1,8 +1,8 @@
 import { TOOLS } from '../tools/tools.js';
 
 export class UI {
-  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl }) {
-    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl };
+  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl }) {
+    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl };
     this.activeToolKey = 'raise';
     this._build();
     this._bindKeys();
@@ -108,6 +108,13 @@ export class UI {
     this.baseElevationSlider.value = val;
     if (this.baseElevationSlider.valSpan) {
       this.baseElevationSlider.valSpan.textContent = Number.isInteger(val) ? val : parseFloat(val).toFixed(2);
+    }
+  }
+
+  setSnowPackSlider(val) {
+    this.snowPackSlider.value = val;
+    if (this.snowPackSlider.valSpan) {
+      this.snowPackSlider.valSpan.textContent = Number.isInteger(val) ? val : parseFloat(val).toFixed(2);
     }
   }
 
@@ -291,6 +298,10 @@ export class UI {
     this.seaLevelSlider = this._slider(sidebar, 'Sea Level', -10, 20, 1, (v) => {
       this.callbacks.onSeaLevel(v);
     }, 0.5);
+
+    this.snowPackSlider = this._slider(sidebar, 'Snow Pack', 0, 100, 50, (v) => {
+      this.callbacks.onSnowPack(v);
+    }, 1);
 
     sidebar.appendChild(this._divider());
 

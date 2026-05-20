@@ -408,7 +408,6 @@ export class Skiers {
 
       // Fresh powder & terrain seeking traverse: probe forward to steer away from tracked snow or dirt!
       const currentH = this.terrain.getInterpolatedHeight(s.wx, s.wz);
-      const snowLine = seaLevel + 37;
       
       if (s.speed > 1.0) {
         const probeDistWorld = 8.0;
@@ -428,10 +427,8 @@ export class Skiers {
           if (pxG >= 0 && pxG < res && pzG >= 0 && pzG < res) {
              const idx = pzG * res + pxG;
              trackedAmount = this.trackMap[idx];
-             
-             // Check if it's dirt (below snow line AND not painted over)
-             const ph = this.terrain.heightmap[idx];
-             isDirt = (ph < snowLine) && (this.terrain.snowmap[idx] <= 0.3);
+                          // Check if it's dirt (no snow cover)
+              isDirt = this.terrain.getSnowCover(px, pz) <= 0.05;
           }
           
           let ph = this.terrain.getInterpolatedHeight(px, pz);
@@ -583,11 +580,8 @@ export class Skiers {
       // Update mesh position
       s.mesh.position.set(s.wx, s.y + 0.15, s.wz);
 
-      // Stop if below the snow line (rock starts at seaLevel + 37)
-      // UNLESS the surface has been covered with the Snow Maker tool
-      const snowIdx = ngz * res + ngx;
-      const hasSnowPaint = this.terrain.snowmap[snowIdx] > 0.3;
-      const isOnSnow = terrainH >= seaLevel + 37 || hasSnowPaint;
+      // Stop if we run out of snow (either natural snowpack or painted snow)
+      const isOnSnow = this.terrain.getSnowCover(s.wx, s.wz) > 0.05;
       
       if (!isOnSnow) {
         this._handleStop(s, chairlifts);

@@ -504,9 +504,8 @@ export class PlayerSkier {
       this._sinkTimer = 0;
 
       if (this.grounded && this.speed > 1.0) {
-        // Check if we are actually on snow (height-based or painted snow)
-        const { gx, gz } = this.terrain.worldToGrid(this.wx, this.wz);
-        const isOnSnow = terrainH >= this.seaLevel + 57 || this.terrain.getSnowAmount(gx, gz) > 0.05;
+        // Check if we are actually on snow using dynamic snow cover
+        const isOnSnow = this.terrain.getSnowCover(this.wx, this.wz) > 0.05;
 
         if (isOnSnow) {
           // Emit snow powder particles

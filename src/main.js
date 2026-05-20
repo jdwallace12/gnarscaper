@@ -126,6 +126,10 @@ const ui = new UI({
     boulders.updatePositions(seaLevel);
     clouds.updatePositions(seaLevel);
   },
+  onSnowPack(v) {
+    terrain.snowPack = v;
+    terrain.updateSnowPack(v);
+  },
   onToggleWireframe(checked) {
     terrain.material.wireframe = checked;
   },
@@ -233,6 +237,13 @@ function doReset() {
     ui.seaLevelSlider.nextElementSibling.innerText = '1';
   }
 
+  // Reset snow pack to 50 and sync UI
+  terrain.snowPack = 50;
+  if (ui.snowPackSlider) {
+    ui.snowPackSlider.value = 50;
+    ui.snowPackSlider.nextElementSibling.innerText = '50';
+  }
+
   terrain.reset(seaLevel);
   trees.clear();
   boulders.clear();
@@ -249,6 +260,7 @@ async function doSaveMap(forcePicker = false) {
     snowmap: Array.from(terrain.snowmap),
     seaLevel: seaLevel,
     baseElevation: currentBaseElevation,
+    snowPack: terrain.snowPack,
     trees: trees.trees.map(t => ({ x: t.worldX, z: t.worldZ, scale: t.scale, variantIdx: t.variantIdx })),
     boulders: boulders.boulders.map(b => ({
       worldX: b.worldX, worldZ: b.worldZ, scale: b.scale, 
@@ -355,12 +367,15 @@ function loadMapData(data) {
   // Restore Settings
   seaLevel = data.seaLevel ?? 1;
   currentBaseElevation = data.baseElevation ?? 0;
+  terrain.snowPack = data.snowPack ?? 50;
   
   ui.setSeaLevelSlider(seaLevel);
   ui.setBaseElevationSlider(currentBaseElevation);
+  ui.setSnowPackSlider(terrain.snowPack);
   
   water.setSeaLevel(seaLevel);
   playerSkier.seaLevel = seaLevel;
+  terrain.updateSnowPack(terrain.snowPack);
   
   // Restore Terrain through Worker to trigger geometry calculations
   terrain.restore({

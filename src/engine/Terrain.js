@@ -10,6 +10,8 @@ export class Terrain {
     this.resolution = resolution;
     this.heightmap = new Float32Array(resolution * resolution);
     this.snowmap = new Float32Array(resolution * resolution);
+    this.snowPack = 50;
+    this.seaLevel = 1;
 
     this.geometry = new THREE.PlaneGeometry(
       size,
@@ -44,7 +46,8 @@ export class Terrain {
     this.worker.postMessage({
       type: 'init',
       size: this.size,
-      resolution: this.resolution
+      resolution: this.resolution,
+      snowPack: this.snowPack
     });
   }
 
@@ -139,6 +142,51 @@ export class Terrain {
     return { gx, gz };
   }
 
+  /** Get cumulative snow cover value (painted or natural/dynamic) at world position */
+  getSnowCover(wx, wz) {
+    const { gx, gz } = this.worldToGrid(wx, wz);
+    const paintSnow = this.getSnowAmount(gx, gz);
+    
+    const h = this.getInterpolatedHeight(wx, wz);
+    
+    // Calculate steepness by sampling heights around the position
+    const spacing = this.size / (this.resolution - 1);
+    const hL = this.getInterpolatedHeight(wx - spacing, wz);
+    const hR = this.getInterpolatedHeight(wx + spacing, wz);
+    const hU = this.getInterpolatedHeight(wx, wz - spacing);
+    const hD = this.getInterpolatedHeight(wx, wz + spacing);
+    
+    const gradX = (hR - hL) / (2 * spacing);
+    const gradZ = (hD - hU) / (2 * spacing);
+    const steepness = Math.sqrt(gradX * gradX + gradZ * gradZ);
+    
+    // Calculate dynamic snow using the custom physical snow accumulation score
+    const packFactor = this.snowPack / 100.0;
+    
+    // Base elevation where snow line starts. 
+    // At 50% slider, this is exactly the original seaLevel + 57!
+    const baseElevation = (this.seaLevel + 57) - (packFactor - 0.5) * 40.0;
+    
+    const flatness = Math.max(0, 1.0 - steepness * 2.0);
+    const curvature = hL + hR + hU + hD - 4.0 * h;
+    
+    // Ridges/crests (curvature < 0) only get wind-scoured if they are steep.
+    // Smooth peaks or ridges (low steepness) bypass the wind-scour penalty!
+    const windScour = curvature < 0 ? curvature * Math.min(1.0, steepness * 3.0) : curvature;
+    
+    // Concavity and flatness score helps snow accumulate lower in couloirs/valleys,
+    // while convex ridges push the snow line higher.
+    const score = flatness * 0.4 + windScour * 0.6;
+    
+    // Adjust height based on local terrain features
+    const effectiveHeight = h + score * 15.0;
+    
+    // Natural snow scales smoothly over a 15-unit transition zone
+    const naturalSnow = Math.min(1.0, Math.max(0, (effectiveHeight - baseElevation) / 15.0));
+    
+    return Math.max(paintSnow, naturalSnow);
+  }
+
   snapshot() {
     return {
       heightmap: new Float32Array(this.heightmap),
@@ -155,7 +203,8 @@ export class Terrain {
       size: this.size,
       resolution: this.resolution,
       heightmap: this.heightmap,
-      snowmap: this.snowmap
+      snowmap: this.snowmap,
+      snowPack: this.snowPack
     });
   }
 
@@ -184,6 +233,13 @@ export class Terrain {
 
   /** Update coloring based on sea level */
   updateMesh(seaLevel = 0) {
+    this.seaLevel = seaLevel;
     this.worker.postMessage({ type: 'updateSeaLevel', seaLevel });
+  }
+
+  /** Update coloring based on snow pack density */
+  updateSnowPack(snowPack = 50) {
+    this.snowPack = snowPack;
+    this.worker.postMessage({ type: 'updateSnowPack', snowPack });
   }
 }

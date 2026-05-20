@@ -17,11 +17,12 @@ let resolution = 256;
 let heightmap = null;
 let snowmap = null;
 let currentSeaLevel = 0;
+let currentSnowPack = 50;
 
 const _tmpBase = new THREE.Color();
 const _tmpResult = new THREE.Color();
 
-function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0) {
+function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0, curvature = 0) {
   const base = _tmpBase;
   const result = _tmpResult;
   
@@ -43,10 +44,8 @@ function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0) {
     base.lerpColors(ALPINE_MEADOW, ROCK, (h - (seaLevel + 28)) / 9);
   } else if (h < seaLevel + 57) {
     base.lerpColors(ROCK, ROCK_DARK, (h - (seaLevel + 37)) / 20);
-  } else if (h < seaLevel + 77) {
-    base.lerpColors(ROCK_DARK, SNOW, (h - (seaLevel + 57)) / 20);
   } else {
-    base.copy(SNOW);
+    base.copy(ROCK_DARK);
   }
 
   if (h > seaLevel + 0.5 && steepness > 0.6) {
@@ -55,8 +54,32 @@ function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0) {
     base.copy(result);
   }
 
-  if (snowAmount > 0.05) {
-    result.lerpColors(base, SNOW, Math.min(snowAmount, 1.0));
+  const packFactor = currentSnowPack / 100.0;
+  
+  // Base elevation where snow line starts. 
+  // At 50% slider, this is exactly the original seaLevel + 57!
+  const baseElevation = (seaLevel + 57) - (packFactor - 0.5) * 40.0;
+  
+  const flatness = Math.max(0, 1.0 - steepness * 2.0);
+  
+  // Ridges/crests (curvature < 0) only get wind-scoured if they are steep.
+  // Smooth peaks or ridges (low steepness) bypass the wind-scour penalty!
+  const windScour = curvature < 0 ? curvature * Math.min(1.0, steepness * 3.0) : curvature;
+  
+  // Concavity and flatness score helps snow accumulate lower in couloirs/valleys,
+  // while convex ridges push the snow line higher.
+  const score = flatness * 0.4 + windScour * 0.6;
+  
+  // Adjust height based on local terrain features
+  const effectiveHeight = h + score * 15.0;
+  
+  // Natural snow scales smoothly over a 15-unit transition zone
+  const naturalSnow = Math.min(1.0, Math.max(0, (effectiveHeight - baseElevation) / 15.0));
+
+  const totalSnow = Math.max(snowAmount, naturalSnow);
+
+  if (totalSnow > 0.05) {
+    result.lerpColors(base, SNOW, Math.min(totalSnow, 1.0));
     return result;
   }
 
@@ -163,7 +186,9 @@ function computeColors(seaLevel = 0) {
     const gradZ = (hD - hU) * invSpacing2;
     const steepness = Math.sqrt(gradX * gradX + gradZ * gradZ);
 
-    const c = _colorForHeight(h, seaLevel, steepness, snowmap[i]);
+    const curvature = hL + hR + hU + hD - 4.0 * h;
+
+    const c = _colorForHeight(h, seaLevel, steepness, snowmap[i], curvature);
     colors[i * 3 + 0] = c.r;
     colors[i * 3 + 1] = c.g;
     colors[i * 3 + 2] = c.b;
@@ -189,6 +214,7 @@ self.onmessage = function (e) {
     }
     
     if (msg.seaLevel !== undefined) currentSeaLevel = msg.seaLevel;
+    if (msg.snowPack !== undefined) currentSnowPack = msg.snowPack;
     const colors = computeColors(currentSeaLevel);
     
     self.postMessage({
@@ -261,6 +287,14 @@ self.onmessage = function (e) {
   }
   else if (msg.type === 'updateSeaLevel') {
     currentSeaLevel = msg.seaLevel;
+    const colors = computeColors(currentSeaLevel);
+    self.postMessage({
+      type: 'colors_update',
+      colors: colors
+    });
+  }
+  else if (msg.type === 'updateSnowPack') {
+    currentSnowPack = msg.snowPack;
     const colors = computeColors(currentSeaLevel);
     self.postMessage({
       type: 'colors_update',
