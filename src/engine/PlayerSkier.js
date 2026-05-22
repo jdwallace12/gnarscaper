@@ -814,7 +814,7 @@ export class PlayerSkier {
     this.mesh.rotation.z = lean;
     this.mesh.rotation.x = targetPitch;
 
-    // Herringbone side-stepping animation on individual mesh parts
+    // Cross-country/skinning glide stride animation on individual mesh parts
     if (this._leftSki && this._rightSki && this._leftLeg && this._rightLeg && this._leftPole && this._rightPole && this._torso) {
       const phase = this.climbPhase || 0;
       
@@ -823,39 +823,42 @@ export class PlayerSkier {
       const leftLift = Math.max(0, Math.sin(phase)) * this._climbWeight;
       const rightLift = Math.max(0, Math.sin(phase + Math.PI)) * this._climbWeight;
       
-      const splay = 0.55 * this._climbWeight;
+      // Parallel skis for skinning/cross-country (no herringbone splay!)
+      const splay = 0.0;
 
       // Update Skis splay, lift and stride
       this._leftSki.rotation.y = splay;
       this._rightSki.rotation.y = -splay;
-      this._leftSki.position.z = leftVal * 0.15;
-      this._rightSki.position.z = rightVal * 0.15;
-      this._leftSki.position.y = 0.015 + leftLift * 0.12;
-      this._rightSki.position.y = 0.015 + rightLift * 0.12;
+      this._leftSki.position.z = leftVal * 0.35; // Nice, long cross-country stride!
+      this._rightSki.position.z = rightVal * 0.35;
+      
+      // Skinning slides along snow: very low vertical lift!
+      this._leftSki.position.y = 0.015 + leftLift * 0.02;
+      this._rightSki.position.y = 0.015 + rightLift * 0.02;
 
       // Update Legs stride and lift
-      this._leftLeg.position.z = leftVal * 0.15;
-      this._rightLeg.position.z = rightVal * 0.15;
-      this._leftLeg.position.y = 0.12 + leftLift * 0.06;
-      this._rightLeg.position.y = 0.12 + rightLift * 0.06;
+      this._leftLeg.position.z = leftVal * 0.35;
+      this._rightLeg.position.z = rightVal * 0.35;
+      this._leftLeg.position.y = 0.12 + leftLift * 0.02;
+      this._rightLeg.position.y = 0.12 + rightLift * 0.02;
 
-      // Update Poles plant in opposition to skis, tilt outward slightly
-      this._leftPole.position.z = rightVal * 0.2;
-      this._leftPole.position.y = 0.22 + rightLift * 0.05;
-      this._leftPole.rotation.x = -rightVal * 0.3;
-      this._leftPole.rotation.z = -0.2 * (1 - this._climbWeight) - 0.35 * this._climbWeight;
+      // Update Poles plant in opposition to skis, swing dynamically
+      this._leftPole.position.z = rightVal * 0.3;
+      this._leftPole.position.y = 0.22 + rightLift * 0.04;
+      this._leftPole.rotation.x = -rightVal * 0.45; // Dynamic pole swing
+      this._leftPole.rotation.z = -0.2 * (1 - this._climbWeight) - 0.25 * this._climbWeight;
 
-      this._rightPole.position.z = leftVal * 0.2;
-      this._rightPole.position.y = 0.22 + leftLift * 0.05;
-      this._rightPole.rotation.x = -leftVal * 0.3;
-      this._rightPole.rotation.z = 0.2 * (1 - this._climbWeight) + 0.35 * this._climbWeight;
+      this._rightPole.position.z = leftVal * 0.3;
+      this._rightPole.position.y = 0.22 + leftLift * 0.04;
+      this._rightPole.rotation.x = -leftVal * 0.45;
+      this._rightPole.rotation.z = 0.2 * (1 - this._climbWeight) + 0.25 * this._climbWeight;
 
-      // Torso & Head Bobbing & Swaying
-      this._torso.position.x = leftVal * 0.02;
-      this._torso.rotation.y = leftVal * 0.1;
-      this._torso.rotation.z = leftVal * 0.05;
-      if (this._head) this._head.position.x = leftVal * 0.02;
-      if (this._helmet) this._helmet.position.x = leftVal * 0.02;
+      // Torso & Head Bobbing & Swaying to look alive
+      this._torso.position.x = leftVal * 0.01;
+      this._torso.rotation.y = leftVal * 0.05;
+      this._torso.rotation.z = leftVal * 0.03;
+      if (this._head) this._head.position.x = leftVal * 0.01;
+      if (this._helmet) this._helmet.position.x = leftVal * 0.01;
     }
 
     // Toggle Parachute visibility and animation
