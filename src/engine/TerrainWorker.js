@@ -237,7 +237,7 @@ self.onmessage = function (e) {
       }
       
       const mapToApply = tool.isSnowBrush ? snowmap : heightmap;
-      tool.apply(mapToApply, resolution, cx, cz, radius, strength, isStart, noiseAmount, snowmap);
+      tool.apply(mapToApply, resolution, cx, cz, radius, strength, isStart, noiseAmount, snowmap, heightmap);
       
       // Sanitize: replace any NaNs with 0 to prevent disappearing terrain
       for (let i = 0; i < heightmap.length; i++) {

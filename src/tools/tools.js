@@ -812,9 +812,28 @@ export const TOOLS = {
     isBrush: true,
     category: 'Nature',
     isSnowBrush: true,
-    apply(snowmap, res, cx, cz, radius, strength) {
+    apply(snowmap, res, cx, cz, radius, strength, isStart, noiseAmount, _ignored, heightmap) {
       applyBrush(snowmap, res, cx, cz, radius, (i, falloff) => {
-        snowmap[i] += strength * falloff * 0.5;
+        const x = i % res;
+        const z = Math.floor(i / res);
+        
+        let curvature = 0;
+        if (heightmap && x > 0 && x < res - 1 && z > 0 && z < res - 1) {
+          const hL = heightmap[z * res + (x - 1)];
+          const hR = heightmap[z * res + (x + 1)];
+          const hU = heightmap[(z - 1) * res + x];
+          const hD = heightmap[(z + 1) * res + x];
+          const h = heightmap[i];
+          curvature = hL + hR + hU + hD - 4.0 * h;
+        }
+
+        // Valley/Couloir (curvature > 0) speeds up accumulation up to 3.0x.
+        // Convex ridges (curvature < 0) slow down accumulation down to 0.1x.
+        const curvatureMultiplier = curvature >= 0 
+          ? 1.0 + Math.min(2.0, curvature * 4.0) 
+          : Math.max(0.1, 1.0 + curvature * 3.0);
+
+        snowmap[i] += strength * falloff * 0.5 * curvatureMultiplier;
         if (snowmap[i] > 1.0) snowmap[i] = 1.0;
       });
     },
