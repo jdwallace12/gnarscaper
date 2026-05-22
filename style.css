@@ -573,6 +573,53 @@ input[type="range"]::-moz-range-thumb {
   pointer-events: none;
 }
 
+/* ---- River Placement Hint ---- */
+#river-placement-hint {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(6, 182, 212, 0.12);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(6, 182, 212, 0.45);
+  border-radius: 12px;
+  padding: 10px 28px;
+  font-family: var(--font);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #67e8f9;
+  z-index: 200;
+  animation: hudFadeIn 0.3s ease forwards;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 0 24px rgba(6, 182, 212, 0.2);
+}
+
+/* ---- Chairlift Placement Hint ---- */
+#chairlift-placement-hint {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(59, 130, 246, 0.12);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  border-radius: 12px;
+  padding: 10px 28px;
+  font-family: var(--font);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #93c5fd;
+  z-index: 200;
+  animation: hudFadeIn 0.3s ease forwards;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.2);
+}
+
+
 /* ==============================
    Responsive & Mobile Optimization
    ============================== */

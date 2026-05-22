@@ -893,6 +893,17 @@ export const TOOLS = {
     isTree: true,
     apply() { /* no-op — tree placement handled externally */ },
   },
+
+  river: {
+    name: 'River',
+    icon: '🏞️',
+    color: '#38bdf8',
+    cursor: 'crosshair',
+    isBrush: false,
+    category: 'Nature',
+    isRiver: true,
+    apply() { /* no-op — handled externally via two-click placement */ },
+  },
 };
 
 /**

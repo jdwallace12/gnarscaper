@@ -14,6 +14,7 @@ import { Water } from './engine/Water.js';
 import { Trees } from './engine/Trees.js';
 import { Skiers } from './engine/Skiers.js';
 import { Chairlifts } from './engine/Chairlifts.js';
+import { Rivers } from './engine/Rivers.js';
 import { BrushEngine } from './tools/BrushEngine.js';
 import { TOOLS } from './tools/tools.js';
 import { History } from './history/History.js';
@@ -32,6 +33,7 @@ let currentBaseElevation = 0;
 let currentToolKey = 'raise';
 let treeDensity = 5;
 let chairliftStartPoint = null;
+let riverSourcePoint = null;
 let isSnowing = false;
 let isClouds = false;
 let isSkierMode = false;
@@ -51,6 +53,7 @@ const trees = new Trees(terrain);
 const boulders = new Boulders(terrain);
 const skiers = new Skiers(terrain);
 const chairlifts = new Chairlifts(terrain);
+const rivers = new Rivers(terrain);
 const snow = new Snow(400);
 const history = new History(50);
 const clouds = new Clouds(terrain);
@@ -64,6 +67,7 @@ scene.add(trees.group);
 scene.add(boulders.group);
 scene.add(skiers.group);
 scene.add(chairlifts.group);
+scene.add(rivers.group);
 scene.add(snow.group);
 scene.add(clouds.group);
 scene.add(playerSkier.group);
@@ -87,6 +91,9 @@ const ui = new UI({
   onToolChange(key) {
     currentToolKey = key;
     chairliftStartPoint = null; // Reset partial chairlifts on tool switch
+    riverSourcePoint = null;    // Reset partial river on tool switch
+    ui.showRiverHint(null);
+    ui.showChairliftHint(null);
     const tool = TOOLS[key];
     brush.setTool(tool);
     brush.updateCursorColor(tool.color);
@@ -249,6 +256,7 @@ function doReset() {
   boulders.clear();
   skiers.clear();
   chairlifts.clear();
+  rivers.clear();
   clouds.updatePositions(seaLevel);
   currentFileHandle = null;
   ui.setUndoRedoState(history.canUndo(), history.canRedo());
@@ -271,6 +279,12 @@ async function doSaveMap(forcePicker = false) {
     chairlifts: chairlifts.lines.map(l => ({ 
       p1: { x: l.p1.x, y: l.p1.y, z: l.p1.z }, 
       p2: { x: l.p2.x, y: l.p2.y, z: l.p2.z } 
+    })),
+    rivers: rivers.rivers.map(r => ({
+      p1: { x: r.p1.x, y: r.p1.y, z: r.p1.z },
+      p2: { x: r.p2.x, y: r.p2.y, z: r.p2.z },
+      channelWidth: r.channelWidth,
+      channelDepth: r.channelDepth
     }))
   };
 
@@ -388,6 +402,7 @@ function loadMapData(data) {
   trees.clear();
   boulders.clear();
   chairlifts.clear();
+  rivers.clear();
   skiers.clear();
   clouds.updatePositions(seaLevel);
   
@@ -407,6 +422,18 @@ function loadMapData(data) {
       chairlifts.buildLine(
         new THREE.Vector3(lift.p1.x, lift.p1.y, lift.p1.z),
         new THREE.Vector3(lift.p2.x, lift.p2.y, lift.p2.z)
+      );
+    });
+  }
+
+  // Restore Rivers
+  if (data.rivers) {
+    data.rivers.forEach(rv => {
+      rivers.buildRiver(
+        new THREE.Vector3(rv.p1.x, rv.p1.y, rv.p1.z),
+        new THREE.Vector3(rv.p2.x, rv.p2.y, rv.p2.z),
+        rv.channelWidth ?? 8,
+        rv.channelDepth ?? 6
       );
     });
   }
@@ -499,6 +526,7 @@ function handleInteractStart(e) {
     trees.removeNear(brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius);
     boulders.removeNear(brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius);
     chairlifts.removeNear(brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius);
+    rivers.removeNear(brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius);
   }
 
   if (tool.isSkier) {
@@ -509,15 +537,43 @@ function handleInteractStart(e) {
     if (!chairliftStartPoint) {
       chairliftStartPoint = brush.intersectionPoint.clone();
       brush.updateCursorColor('#e63946');
+      ui.showChairliftHint('🚡 Chairlift base set! Now click the top station location.');
     } else {
       const endPoint = brush.intersectionPoint.clone();
       chairlifts.buildLine(chairliftStartPoint, endPoint);
       chairliftStartPoint = null;
       brush.updateCursorColor(tool.color);
+      ui.showChairliftHint(null);
     }
   } else if (chairliftStartPoint) {
     chairliftStartPoint = null;
     brush.updateCursorColor(tool.color);
+    ui.showChairliftHint(null);
+  }
+
+  if (tool.isRiver) {
+    if (!riverSourcePoint) {
+      // First click — record source (top/upstream)
+      riverSourcePoint = brush.intersectionPoint.clone();
+      brush.updateCursorColor('#06b6d4'); // cyan = waiting for mouth
+      ui.showRiverHint('🏞️ River source set! Now click the downstream end (mouth).');
+    } else {
+      // Second click — carve the river
+      history.push(terrain.snapshot());
+      ui.setUndoRedoState(history.canUndo(), history.canRedo());
+      const mouthPoint = brush.intersectionPoint.clone();
+      rivers.buildRiver(riverSourcePoint, mouthPoint, brush.radius * 0.7, brush.strength * 18);
+      terrain.updateMesh(seaLevel);
+      trees.updatePositions(seaLevel);
+      boulders.updatePositions(seaLevel);
+      riverSourcePoint = null;
+      brush.updateCursorColor(tool.color);
+      ui.showRiverHint(null);
+    }
+  } else if (riverSourcePoint) {
+    riverSourcePoint = null;
+    brush.updateCursorColor(TOOLS[currentToolKey].color);
+    ui.showRiverHint(null);
   }
 
   // Disable orbit while sculpting
@@ -597,6 +653,7 @@ function animate() {
     // Simulations must run inside the physics step to stay perfectly synchronized
     skiers.update(PHYSICS_DT, water, chairlifts, isSnowing, clouds);
     chairlifts.update(PHYSICS_DT);
+    rivers.update(PHYSICS_DT);
     
     physicsAccumulator -= PHYSICS_DT;
   }

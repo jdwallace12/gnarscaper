@@ -231,6 +231,11 @@ export class Terrain {
     });
   }
 
+  /** Push modified heightmap to worker to update geometry and colors */
+  updateHeightmap() {
+    this.worker.postMessage({ type: 'updateHeightmap', heightmap: this.heightmap });
+  }
+
   /** Update coloring based on sea level */
   updateMesh(seaLevel = 0) {
     this.seaLevel = seaLevel;

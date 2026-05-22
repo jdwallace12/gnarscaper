@@ -508,6 +508,7 @@ export class UI {
       • <b>Arrow Keys:</b> Pan View (Shift for slow)<br><br>
       <b>Editor Tips</b><br>
       • <b>Chairlifts:</b> Click once for start, again for end<br>
+      • <b>River:</b> Click source (top), then mouth (bottom)<br>
       • <b>Ski Mode:</b> Drop a skier to test your mountain!
     `;
     sidebar.appendChild(hint);
@@ -728,6 +729,44 @@ export class UI {
       this._placementHint.style.display = 'block';
     } else if (this._placementHint) {
       this._placementHint.style.display = 'none';
+    }
+  }
+
+  /**
+   * Show or hide the river placement hint banner.
+   * Pass a string to show, null/falsy to hide.
+   * @param {string|null} msg
+   */
+  showRiverHint(msg) {
+    if (msg) {
+      if (!this._riverHint) {
+        this._riverHint = document.createElement('div');
+        this._riverHint.id = 'river-placement-hint';
+        document.body.appendChild(this._riverHint);
+      }
+      this._riverHint.innerHTML = msg;
+      this._riverHint.style.display = 'block';
+    } else if (this._riverHint) {
+      this._riverHint.style.display = 'none';
+    }
+  }
+
+  /**
+   * Show or hide the chairlift placement hint banner.
+   * Pass a string to show, null/falsy to hide.
+   * @param {string|null} msg
+   */
+  showChairliftHint(msg) {
+    if (msg) {
+      if (!this._chairliftHint) {
+        this._chairliftHint = document.createElement('div');
+        this._chairliftHint.id = 'chairlift-placement-hint';
+        document.body.appendChild(this._chairliftHint);
+      }
+      this._chairliftHint.innerHTML = msg;
+      this._chairliftHint.style.display = 'block';
+    } else if (this._chairliftHint) {
+      this._chairliftHint.style.display = 'none';
     }
   }
 }

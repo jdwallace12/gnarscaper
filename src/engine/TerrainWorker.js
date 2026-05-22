@@ -293,6 +293,15 @@ self.onmessage = function (e) {
       colors: colors
     });
   }
+  else if (msg.type === 'updateHeightmap') {
+    if (msg.heightmap) heightmap.set(msg.heightmap);
+    const colors = computeColors(currentSeaLevel);
+    self.postMessage({
+      type: 'colors_update',
+      colors: colors,
+      heightmap: new Float32Array(heightmap)
+    });
+  }
   else if (msg.type === 'updateSnowPack') {
     currentSnowPack = msg.snowPack;
     const colors = computeColors(currentSeaLevel);
