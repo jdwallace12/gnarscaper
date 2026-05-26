@@ -43,12 +43,18 @@ export class Terrain {
     // Track tool state from worker
     this._toolState = {};
 
+    this.onInitListeners = [];
+
     this.worker.postMessage({
       type: 'init',
       size: this.size,
       resolution: this.resolution,
       snowPack: this.snowPack
     });
+  }
+
+  addOnInitListener(callback) {
+    this.onInitListeners.push(callback);
   }
 
   /* ---- Worker Handling ---- */
@@ -61,6 +67,10 @@ export class Terrain {
 
     if (msg.colors || msg.heightmap) {
       this._applyBuffersToMesh(msg.heightmap, msg.colors);
+    }
+
+    if (msg.type === 'init_done') {
+      this.onInitListeners.forEach(cb => cb(msg));
     }
   }
 

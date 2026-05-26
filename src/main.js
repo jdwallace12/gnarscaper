@@ -184,6 +184,34 @@ const ui = new UI({
   onLoad() { triggerLoadMap(); },
 });
 
+function generateInitialFoliage() {
+  const mapSize = terrain.size;
+
+  // Let's place clusters of trees
+  const numTreeClusters = 45;
+  for (let i = 0; i < numTreeClusters; i++) {
+    const tx = (Math.random() - 0.5) * mapSize;
+    const tz = (Math.random() - 0.5) * mapSize;
+    const h = terrain.getInterpolatedHeight(tx, tz);
+    
+    if (h > seaLevel + 1.0 && h < seaLevel + 35.0) {
+      const radius = 12 + Math.random() * 16;
+      const density = 4 + Math.random() * 4;
+      trees.placeCluster(tx, tz, radius, density, seaLevel);
+    }
+  }
+
+
+}
+
+let firstInit = true;
+terrain.addOnInitListener(() => {
+  if (firstInit) {
+    firstInit = false;
+    generateInitialFoliage();
+  }
+});
+
 const mobileMovement = { up: false, down: false, left: false, right: false };
 
 function updateMobileCamera(dt) {
