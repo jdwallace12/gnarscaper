@@ -740,7 +740,7 @@ export class PlayerSkier {
     const pitchSpeed = 2.2;
     if (this._keys.left)  this._chairLookYaw += lookSpeed * dt;
     if (this._keys.right) this._chairLookYaw -= lookSpeed * dt;
-    if (this._keys.lookUp)   this._chairLookPitch = Math.min(this._chairLookPitch + pitchSpeed * dt, 2.5);
+    if (this._keys.lookUp)   this._chairLookPitch = Math.min(this._chairLookPitch + pitchSpeed * dt, 4.0);
     if (this._keys.lookDown) this._chairLookPitch = Math.max(this._chairLookPitch - pitchSpeed * dt, -2.0);
     // Gently return pitch to neutral when not pressing
     if (!this._keys.lookUp && !this._keys.lookDown) {
