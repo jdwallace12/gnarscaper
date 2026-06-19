@@ -288,6 +288,9 @@ export class PlayerSkier {
     const rawTerrainH = this.terrain.getInterpolatedHeight(this.wx, this.wz);
     const overWater = rawTerrainH <= this.seaLevel;
 
+    // Check if we are actually on snow using dynamic snow cover
+    const isOnSnow = this.terrain.getSnowCover(this.wx, this.wz) > 0.05;
+
     // On water the surface is flat — zero out terrain gradient so the skier
     // doesn't get pushed around by the terrain shape underneath the water
     if (overWater && this.grounded) {
@@ -312,7 +315,7 @@ export class PlayerSkier {
 
     if (this.isClimbing) {
       // Climbing Physics: Move slowly in heading direction
-      const climbSpeed = 2.6;
+      const climbSpeed = isOnSnow ? 2.6 : 2.0;
       this.vx = Math.sin(this.heading) * climbSpeed;
       this.vz = Math.cos(this.heading) * climbSpeed;
 
@@ -387,7 +390,7 @@ export class PlayerSkier {
 
       // Standard push force (W key)
       if (this._keys.forward && this.grounded) {
-        const pushStrength = 1.5;
+        const pushStrength = isOnSnow ? 1.5 : 1.2;
         this.vx += Math.sin(this.heading) * pushStrength * dt;
         this.vz += Math.cos(this.heading) * pushStrength * dt;
       }
@@ -405,7 +408,7 @@ export class PlayerSkier {
 
       // Forward push (ArrowUp)
       if (this._keys.forward) {
-        const pushForce = 15.0; // Stronger push for flats
+        const pushForce = (this.grounded && !isOnSnow) ? 12.0 : 15.0; // Slightly weaker push when grounded on grass/dirt/rock
         this.vx += Math.sin(this.heading) * pushForce * dt;
         this.vz += Math.cos(this.heading) * pushForce * dt;
       }
@@ -428,6 +431,10 @@ export class PlayerSkier {
       friction = 0.998; // 'W' tucks: less aerodynamic drag
     } else if (this._keys.forward && this.speed > 1.0) {
       friction = 0.996; // reduce drag when actively pushing
+    }
+
+    if (this.grounded && !overWater && !isOnSnow) {
+      friction = 0.982; // Slightly higher friction on grass/dirt/rock (skis don't glide quite as well)
     }
 
     this.vx *= friction;
@@ -504,9 +511,6 @@ export class PlayerSkier {
       this._sinkTimer = 0;
 
       if (this.grounded && this.speed > 1.0) {
-        // Check if we are actually on snow using dynamic snow cover
-        const isOnSnow = this.terrain.getSnowCover(this.wx, this.wz) > 0.05;
-
         if (isOnSnow) {
           // Emit snow powder particles
           this._snowTimer += dt;
