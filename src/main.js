@@ -137,6 +137,9 @@ const ui = new UI({
     terrain.snowPack = v;
     terrain.updateSnowPack(v);
   },
+  onCloudAmount(v) {
+    clouds.setAmount(v);
+  },
   onToggleWireframe(checked) {
     terrain.material.wireframe = checked;
   },
