@@ -140,6 +140,12 @@ const ui = new UI({
   onCloudAmount(v) {
     clouds.setAmount(v);
   },
+  onTimeOfDay(v) {
+    scene.setTimeOfDay(v);
+  },
+  onLightingPreset(presetId) {
+    scene.setLightingPreset(presetId);
+  },
   onToggleWireframe(checked) {
     terrain.material.wireframe = checked;
   },

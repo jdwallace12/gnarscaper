@@ -1,9 +1,11 @@
 import { TOOLS } from '../tools/tools.js';
 
 export class UI {
-  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl }) {
-    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl };
+  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset }) {
+    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset };
     this.activeToolKey = 'raise';
+    this.presetKeys = ['golden', 'noon', 'sunset', 'night'];
+    this.currentPresetIdx = 0;
     this._build();
     this._bindKeys();
   }
@@ -115,6 +117,26 @@ export class UI {
     this.snowPackSlider.value = val;
     if (this.snowPackSlider.valSpan) {
       this.snowPackSlider.valSpan.textContent = Number.isInteger(val) ? val : parseFloat(val).toFixed(2);
+    }
+  }
+
+  setTimeOfDaySlider(val) {
+    if (this.timeOfDaySlider) {
+      this.timeOfDaySlider.value = val;
+      if (this.timeOfDaySlider.valSpan) {
+        this.timeOfDaySlider.valSpan.textContent = Number.isInteger(val) ? val : parseFloat(val).toFixed(1);
+      }
+    }
+  }
+
+  setLightingPreset(presetId, hours = null) {
+    const presetHours = { golden: 17.5, noon: 12.0, sunset: 19.2, night: 22.0 };
+    const h = hours ?? presetHours[presetId] ?? 17.5;
+    this.setTimeOfDaySlider(h);
+    if (this.callbacks.onLightingPreset) {
+      this.callbacks.onLightingPreset(presetId);
+    } else if (this.callbacks.onTimeOfDay) {
+      this.callbacks.onTimeOfDay(h);
     }
   }
 
@@ -308,6 +330,51 @@ export class UI {
         this.callbacks.onCloudAmount(v);
       }
     }, 1);
+
+    sidebar.appendChild(this._divider());
+
+    // Lighting & Atmosphere
+    const lightingLabel = document.createElement('div');
+    lightingLabel.className = 'section-label';
+    lightingLabel.textContent = 'Lighting & Atmosphere';
+    sidebar.appendChild(lightingLabel);
+
+    // Time of Day Slider
+    this.timeOfDaySlider = this._slider(sidebar, 'Time of Day', 6, 23, 17.5, (v) => {
+      if (this.callbacks.onTimeOfDay) {
+        this.callbacks.onTimeOfDay(v);
+      }
+    }, 0.5, '<kbd>L</kbd> key to cycle presets');
+
+    // Preset buttons row
+    const presetRow = document.createElement('div');
+    presetRow.className = 'lighting-preset-row';
+    presetRow.style.display = 'grid';
+    presetRow.style.gridTemplateColumns = '1fr 1fr';
+    presetRow.style.gap = '6px';
+    presetRow.style.marginBottom = '12px';
+
+    const presets = [
+      { id: 'golden', name: 'Golden Hour 🌅', hours: 17.5 },
+      { id: 'noon', name: 'Alpine Noon ☀️', hours: 12.0 },
+      { id: 'sunset', name: 'Sunset 🌇', hours: 19.2 },
+      { id: 'night', name: 'Starlight 🌌', hours: 22.0 }
+    ];
+
+    presets.forEach(p => {
+      const btn = document.createElement('button');
+      btn.className = 'history-btn';
+      btn.style.fontSize = '0.68rem';
+      btn.style.padding = '6px 4px';
+      btn.style.whiteSpace = 'nowrap';
+      btn.innerText = p.name;
+      btn.title = `Switch to ${p.name}`;
+      btn.addEventListener('click', () => {
+        this.setLightingPreset(p.id, p.hours);
+      });
+      presetRow.appendChild(btn);
+    });
+    sidebar.appendChild(presetRow);
 
     sidebar.appendChild(this._divider());
 
@@ -605,6 +672,15 @@ export class UI {
           this.wireframeCheckbox.checked = !this.wireframeCheckbox.checked;
           this.wireframeCheckbox.dispatchEvent(new Event('change'));
         }
+        return;
+      }
+
+      // Lighting Cycle Shortcut (L key)
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        this.currentPresetIdx = (this.currentPresetIdx + 1) % this.presetKeys.length;
+        const nextPreset = this.presetKeys[this.currentPresetIdx];
+        this.setLightingPreset(nextPreset);
         return;
       }
 

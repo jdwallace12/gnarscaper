@@ -13,11 +13,11 @@ export class Water {
     this.geometry.rotateX(-Math.PI / 2);
 
     this.material = new THREE.MeshStandardMaterial({
-      color: 0x1a8fba,
+      color: 0x147ca6,
       transparent: true,
-      opacity: 0.75,
-      roughness: 0.1,
-      metalness: 0.5,
+      opacity: 0.8,
+      roughness: 0.05,
+      metalness: 0.35,
       side: THREE.DoubleSide,
     });
 

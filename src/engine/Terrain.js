@@ -28,8 +28,8 @@ export class Terrain {
     this.material = new THREE.MeshStandardMaterial({
       vertexColors: true,
       flatShading: false,
-      roughness: 0.85,
-      metalness: 0.05,
+      roughness: 0.68,
+      metalness: 0.02,
     });
 
     this.mesh = new THREE.Mesh(this.geometry, this.material);

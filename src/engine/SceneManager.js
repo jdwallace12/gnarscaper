@@ -23,14 +23,22 @@ export class SceneManager {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 1.2;
 
     // Scene
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.FogExp2(0x2a4a6b, 0.0015);
+    
+    // Time of day state (6.0 to 22.0 hours, default 17.5 = Golden Hour)
+    this.timeOfDay = 17.5;
+    
     this._buildSky();
+    this._buildLights();
+
+    // Set initial dramatic lighting (Golden Hour)
+    this.setTimeOfDay(17.5);
 
     // Camera
     this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.5, 3000);
@@ -51,9 +59,6 @@ export class SceneManager {
     this.controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
     this.controls.listenToKeyEvents(window);
     this.controls.keyPanSpeed = 50.0;
-
-    // Lights
-    this._buildLights();
 
     // Resize
     window.addEventListener('resize', () => this._onResize());
@@ -90,8 +95,6 @@ export class SceneManager {
       console.log('Renderer initialized successfully');
     } catch (e) {
       console.error('Renderer init failed:', e);
-      // If init fails, we might still be able to render in some contexts, 
-      // but usually this is where the black screen happens.
     }
   }
 
@@ -124,7 +127,7 @@ export class SceneManager {
     // Shadow Optimization: Shrink shadow frustum and center on player
     if (this.sun) {
       if (this.sun.target.parent !== this.scene) this.scene.add(this.sun.target);
-      const s = 50; // tight 100x100 frustum around player
+      const s = 60; // tight frustum around player
       this.sun.shadow.camera.left = -s;
       this.sun.shadow.camera.right = s;
       this.sun.shadow.camera.top = s;
@@ -141,7 +144,7 @@ export class SceneManager {
 
     // Restore shadow frustum immediately to prevent artifacts
     if (this.sun) {
-      const s = 300;
+      const s = 240;
       this.sun.shadow.camera.left = -s;
       this.sun.shadow.camera.right = s;
       this.sun.shadow.camera.top = s;
@@ -149,7 +152,6 @@ export class SceneManager {
       this.sun.shadow.camera.updateProjectionMatrix();
       
       // Restore sun pos
-      this.sun.position.set(80, 120, 60);
       this.sun.target.position.set(0, 0, 0);
       this.sun.target.updateMatrixWorld();
     }
@@ -158,35 +160,26 @@ export class SceneManager {
     this.controls.enabled = true;
     
     if (skierPos && isFinite(skierPos.x) && isFinite(skierPos.y) && isFinite(skierPos.z)) {
-      // Focus OrbitControls target on the skier's final position
       this.controls.target.copy(skierPos);
-      
-      // Position the camera slightly behind and above the skier's final position
       this.camera.position.set(
         skierPos.x - 40,
         skierPos.y + 50,
         skierPos.z + 70
       );
-      
       this.camera.up.set(0, 1, 0);
       this.camera.lookAt(this.controls.target);
-      
-      this.controls.update(); // Sync OrbitControls
+      this.controls.update();
       this.camera.updateProjectionMatrix();
       this.camera.updateMatrixWorld();
     } else if (this._savedCamPos && isFinite(this._savedCamPos.x) && isFinite(this._savedTarget.x)) {
       this.camera.position.copy(this._savedCamPos);
       this.controls.target.copy(this._savedTarget);
-      
-      // Force a full reset of camera orientation
       this.camera.up.set(0, 1, 0);
       this.camera.lookAt(this._savedTarget);
-      
-      this.controls.update(); // Sync OrbitControls
+      this.controls.update();
       this.camera.updateProjectionMatrix();
       this.camera.updateMatrixWorld();
     } else {
-      // Emergency fallback if saved state was lost or corrupted
       this.camera.position.set(90, 120, 180);
       this.controls.target.set(0, 0, 0);
       this.camera.up.set(0, 1, 0);
@@ -197,16 +190,11 @@ export class SceneManager {
 
   /** Reset camera to starting position */
   resetCamera() {
-    console.log("SceneManager: Resetting camera...");
-    if (this._skierMode) return; // Don't reset while skiing
-    
-    // Explicitly reset controls and camera to starting state
+    if (this._skierMode) return;
     this.controls.target.set(0, 0, 0);
     this.camera.position.set(90, 120, 180);
     this.camera.up.set(0, 1, 0);
     this.camera.lookAt(0, 0, 0);
-    
-    // Force controls to update their internal state based on new camera pos
     this.controls.update();
     this.camera.updateProjectionMatrix();
   }
@@ -215,7 +203,6 @@ export class SceneManager {
   updateSkierCamera(targetPos, lookAtPos, dt) {
     if (!this._skierMode) return;
 
-    // Strict Finite Guard: prevent camera from exploding if physics goes wild
     if (!isFinite(targetPos.x) || !isFinite(targetPos.y) || !isFinite(targetPos.z) ||
         !isFinite(lookAtPos.x) || !isFinite(lookAtPos.y) || !isFinite(lookAtPos.z)) {
       return;
@@ -229,8 +216,8 @@ export class SceneManager {
 
     // Dynamic Shadow: center shadow map on player
     if (this.sun) {
-      const sunOffset = new THREE.Vector3(80, 120, 60); // Original relative sun pos
-      this.sun.position.copy(lookAtPos).add(sunOffset);
+      const sunDir = this._getSunOffsetVector();
+      this.sun.position.copy(lookAtPos).add(sunDir);
       this.sun.target.position.copy(lookAtPos);
       this.sun.target.updateMatrixWorld();
     }
@@ -240,51 +227,190 @@ export class SceneManager {
     return !!this._skierMode;
   }
 
+  /** Set time of day in hours (6.0 = Dawn, 12.0 = Noon, 17.5 = Golden Hour, 19.5 = Sunset, 22.0 = Night) */
+  setTimeOfDay(hours) {
+    this.timeOfDay = THREE.MathUtils.clamp(hours, 6, 23.5);
+    
+    // Map hours (6 to 23.5) to sun elevation angle and azimuth
+    // 6.0 = sun at horizon (0 rad), 13.0 = zenith peak, 19.5 = setting horizon
+    const dayProgress = (this.timeOfDay - 6) / 14; // 0 at dawn, 0.5 at noon, 1 at dusk
+    const sunAngle = Math.PI * THREE.MathUtils.clamp(dayProgress, 0, 1);
+    
+    // Sun position calculations (orbiting east to west)
+    const distance = 250;
+    const sunY = Math.sin(sunAngle) * distance;
+    const sunX = Math.cos(sunAngle) * distance;
+    const sunZ = Math.sin(sunAngle * 0.7) * 90 + 40;
 
+    this.sunOffset = new THREE.Vector3(sunX, Math.max(15, sunY), sunZ);
+    this.sun.position.copy(this.sunOffset);
+    this.sun.target.position.set(0, 0, 0);
+    this.sun.target.updateMatrixWorld();
+
+    // Color Interpolations based on time of day
+    let sunColor, sunIntensity, skyHorizonColor, skyTopColor, hemiSkyColor, hemiGroundColor, fogColor, fogDensity, exposure;
+
+    if (this.timeOfDay < 8.0) {
+      // Dawn / Early Morning
+      const t = (this.timeOfDay - 6.0) / 2.0;
+      sunColor = new THREE.Color().lerpColors(new THREE.Color(0xff8c42), new THREE.Color(0xffd194), t);
+      sunIntensity = THREE.MathUtils.lerp(1.2, 2.2, t);
+      skyHorizonColor = new THREE.Color().lerpColors(new THREE.Color(0xd97736), new THREE.Color(0x7fb8e6), t);
+      skyTopColor = new THREE.Color().lerpColors(new THREE.Color(0x1a2b4c), new THREE.Color(0x0f2b5c), t);
+      hemiSkyColor = new THREE.Color(0x7fb8e6);
+      hemiGroundColor = new THREE.Color(0x3a4835);
+      fogColor = skyHorizonColor.clone();
+      fogDensity = 0.0018;
+      exposure = 1.15;
+    } else if (this.timeOfDay < 16.5) {
+      // High Alpine Noon
+      const t = (this.timeOfDay - 8.0) / 8.5;
+      sunColor = new THREE.Color().lerpColors(new THREE.Color(0xfff1df), new THREE.Color(0xffffff), t < 0.5 ? t * 2 : (1 - t) * 2);
+      sunIntensity = 2.4;
+      skyHorizonColor = new THREE.Color(0x4a8bb8);
+      skyTopColor = new THREE.Color(0x0b1a3d);
+      hemiSkyColor = new THREE.Color(0x60a5fa);
+      hemiGroundColor = new THREE.Color(0x2d3a2e);
+      fogColor = new THREE.Color(0x3a6b8c);
+      fogDensity = 0.0012;
+      exposure = 1.2;
+    } else if (this.timeOfDay < 18.5) {
+      // Golden Hour (Low warm dramatic sun)
+      const t = (this.timeOfDay - 16.5) / 2.0;
+      sunColor = new THREE.Color().lerpColors(new THREE.Color(0xffdfb3), new THREE.Color(0xff9e43), t);
+      sunIntensity = 2.6; // Dramatic warm direct light
+      skyHorizonColor = new THREE.Color().lerpColors(new THREE.Color(0x4a8bb8), new THREE.Color(0xe07a48), t);
+      skyTopColor = new THREE.Color().lerpColors(new THREE.Color(0x0b1a3d), new THREE.Color(0x1a244d), t);
+      hemiSkyColor = new THREE.Color(0x60a5fa);
+      hemiGroundColor = new THREE.Color(0x3d3024);
+      fogColor = skyHorizonColor.clone();
+      fogDensity = 0.0015;
+      exposure = 1.25;
+    } else if (this.timeOfDay < 20.5) {
+      // Alpenglow / Sunset Dusk
+      const t = (this.timeOfDay - 18.5) / 2.0;
+      sunColor = new THREE.Color().lerpColors(new THREE.Color(0xff7733), new THREE.Color(0xaa4466), t);
+      sunIntensity = THREE.MathUtils.lerp(2.2, 0.8, t);
+      skyHorizonColor = new THREE.Color().lerpColors(new THREE.Color(0xe07a48), new THREE.Color(0x6b3064), t);
+      skyTopColor = new THREE.Color().lerpColors(new THREE.Color(0x1a244d), new THREE.Color(0x090c24), t);
+      hemiSkyColor = new THREE.Color(0x818cf8);
+      hemiGroundColor = new THREE.Color(0x1e1b2e);
+      fogColor = skyHorizonColor.clone();
+      fogDensity = 0.0019;
+      exposure = 1.1;
+    } else {
+      // Night / Starlight Moonlight
+      sunColor = new THREE.Color(0x7393b3);
+      sunIntensity = 0.45;
+      skyHorizonColor = new THREE.Color(0x0b1329);
+      skyTopColor = new THREE.Color(0x040714);
+      hemiSkyColor = new THREE.Color(0x2a3d66);
+      hemiGroundColor = new THREE.Color(0x0a0f1d);
+      fogColor = skyHorizonColor.clone();
+      fogDensity = 0.0022;
+      exposure = 0.95;
+    }
+
+    // Apply light changes
+    this.sun.color.copy(sunColor);
+    this.sun.intensity = sunIntensity;
+
+    this.ambientLight.color.copy(hemiSkyColor).multiplyScalar(0.4);
+    this.ambientLight.intensity = 0.25;
+
+    this.hemiLight.color.copy(hemiSkyColor);
+    this.hemiLight.groundColor.copy(hemiGroundColor);
+    this.hemiLight.intensity = 0.55;
+
+    this.renderer.toneMappingExposure = exposure;
+
+    // Update scene fog
+    this.scene.fog.color.copy(fogColor);
+    this.scene.fog.density = fogDensity;
+
+    // Update dynamic sky mesh
+    this._updateSkyGradient(horizonColorSky => skyHorizonColor, skyTopColor);
+  }
+
+  setLightingPreset(presetName) {
+    switch (presetName) {
+      case 'golden':
+        this.setTimeOfDay(17.5);
+        break;
+      case 'noon':
+        this.setTimeOfDay(12.0);
+        break;
+      case 'sunset':
+        this.setTimeOfDay(19.2);
+        break;
+      case 'night':
+        this.setTimeOfDay(22.0);
+        break;
+      case 'dawn':
+        this.setTimeOfDay(7.0);
+        break;
+      default:
+        this.setTimeOfDay(17.5);
+    }
+  }
+
+  _getSunOffsetVector() {
+    return this.sunOffset ? this.sunOffset.clone().normalize().multiplyScalar(150) : new THREE.Vector3(80, 120, 60);
+  }
 
   _buildSky() {
-    const skyGeo = new THREE.SphereGeometry(700, 32, 32);
-    const skyColors = [];
-    const topColor = new THREE.Color(0x0b1026);
-    const horizonColor = new THREE.Color(0x2a4a6b);
+    const skyGeo = new THREE.SphereGeometry(800, 32, 32);
     const pos = skyGeo.attributes.position;
-
-    for (let i = 0; i < pos.count; i++) {
-      const y = pos.getY(i);
-      const t = THREE.MathUtils.clamp((y + 700) / 1400, 0, 1);
-      const c = new THREE.Color().lerpColors(horizonColor, topColor, t);
-      skyColors.push(c.r, c.g, c.b);
-    }
-    skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(skyColors, 3));
+    const skyColors = new Float32Array(pos.count * 3);
+    skyGeo.setAttribute('color', new THREE.BufferAttribute(skyColors, 3));
 
     const skyMat = new THREE.MeshBasicMaterial({
       vertexColors: true,
       side: THREE.BackSide,
       fog: false
     });
-    const sky = new THREE.Mesh(skyGeo, skyMat);
-    this.scene.add(sky);
+    this.skyMesh = new THREE.Mesh(skyGeo, skyMat);
+    this.scene.add(this.skyMesh);
+  }
+
+  _updateSkyGradient(horizonColor, topColor) {
+    if (!this.skyMesh) return;
+    const pos = this.skyMesh.geometry.attributes.position;
+    const colors = this.skyMesh.geometry.attributes.color;
+    
+    // Evaluate colors if passed as vectors/colors
+    const hCol = typeof horizonColor === 'function' ? horizonColor() : horizonColor;
+    const tCol = topColor;
+
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      const t = THREE.MathUtils.clamp((y + 400) / 1000, 0, 1);
+      const c = new THREE.Color().lerpColors(hCol, tCol, Math.pow(t, 0.7));
+      colors.setXYZ(i, c.r, c.g, c.b);
+    }
+    colors.needsUpdate = true;
   }
 
   _buildLights() {
-    const ambient = new THREE.AmbientLight(0x8899bb, 0.6);
-    this.scene.add(ambient);
+    this.ambientLight = new THREE.AmbientLight(0x556688, 0.25);
+    this.scene.add(this.ambientLight);
 
-    const hemi = new THREE.HemisphereLight(0x87ceeb, 0x362907, 0.4);
-    this.scene.add(hemi);
+    this.hemiLight = new THREE.HemisphereLight(0x60a5fa, 0x2d3a2e, 0.55);
+    this.scene.add(this.hemiLight);
 
-    const sun = new THREE.DirectionalLight(0xffeedd, 1.6);
-    sun.position.set(80, 120, 60);
+    const sun = new THREE.DirectionalLight(0xfff1df, 2.4);
+    sun.position.set(100, 140, 80);
     sun.castShadow = true;
-    sun.shadow.mapSize.width = 1024;
-    sun.shadow.mapSize.height = 1024;
+    sun.shadow.mapSize.width = 2048;
+    sun.shadow.mapSize.height = 2048;
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 800;
-    sun.shadow.camera.left = -300;
-    sun.shadow.camera.right = 300;
-    sun.shadow.camera.top = 300;
-    sun.shadow.camera.bottom = -300;
-    sun.shadow.bias = -0.0005;
+    sun.shadow.camera.far = 900;
+    sun.shadow.camera.left = -240;
+    sun.shadow.camera.right = 240;
+    sun.shadow.camera.top = 240;
+    sun.shadow.camera.bottom = -240;
+    sun.shadow.bias = -0.0003;
+    sun.shadow.radius = 2.5; // Smooth soft shadow edges
     this.scene.add(sun);
     this.sun = sun;
   }
