@@ -8,6 +8,17 @@ import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js'
 
 const MAX_SKIERS = 2000;
 
+const PARACHUTE_COLORS = [
+  0xef233c, // Red
+  0x06b6d4, // Cyan
+  0xfbbf24, // Yellow
+  0xa855f7, // Purple
+  0x22c55e, // Green
+  0xf97316, // Orange
+  0xec4899, // Pink
+  0x3b82f6  // Blue
+];
+
 export class Skiers {
   constructor(terrain) {
     this.terrain = terrain;
@@ -61,6 +72,46 @@ export class Skiers {
     this._trailsVisible = true;
   }
 
+  _buildParachute(colorHex) {
+    const chuteGroup = new THREE.Group();
+    const chuteMat = new THREE.MeshStandardMaterial({ 
+      color: colorHex, 
+      roughness: 0.7, 
+      side: THREE.DoubleSide 
+    });
+    
+    // Canopy geometry
+    const chuteMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(1.2, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.4),
+      chuteMat
+    );
+    chuteMesh.scale.set(1.5, 0.5, 0.6);
+    chuteMesh.position.y = 1.8;
+    chuteGroup.add(chuteMesh);
+
+    // Strings
+    const stringMat = new THREE.LineBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.7 });
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const rimRadius = 1.2 * Math.sin(Math.PI * 0.4);
+      const px = Math.cos(angle) * rimRadius * 1.5;
+      const pz = Math.sin(angle) * rimRadius * 0.6;
+      const py = 1.8 + (1.2 * Math.cos(Math.PI * 0.4) * 0.5);
+
+      const points = [
+        new THREE.Vector3(0, 0.2, 0),
+        new THREE.Vector3(px, py, pz)
+      ];
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const string = new THREE.Line(lineGeo, stringMat);
+      chuteGroup.add(string);
+    }
+
+    chuteGroup.visible = false;
+    this.group.add(chuteGroup);
+    return chuteGroup;
+  }
+
   _updateSpatialHash() {
     this._spatialHash.clear();
     for (const s of this.skiers) {
@@ -83,6 +134,10 @@ export class Skiers {
     mesh.scale.setScalar(0.7);
     mesh.position.set(wx, h + 0.15, wz);
 
+    // Parachute
+    const chuteColor = PARACHUTE_COLORS[Math.floor(Math.random() * PARACHUTE_COLORS.length)];
+    const chuteGroup = this._buildParachute(chuteColor);
+
     // Trail line (ski tracks)
     const trailMat = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.9 });
     const trailGeo = new THREE.BufferGeometry();
@@ -94,6 +149,8 @@ export class Skiers {
 
     this.skiers.push({
       mesh,
+      chuteGroup,
+      paragliding: false,
       wx, wz,
       vx: 0, vz: 0,
       active: true,
@@ -521,9 +578,9 @@ export class Skiers {
 
       s.timeAlive += dt;
 
-      // Calculate perpendicular (cross) vector to current velocity for carving
+      // Calculate perpendicular (cross) vector to current velocity for carving (strictly when grounded)
       let carveX = 0, carveZ = 0;
-      if (s.speed > 0.01) {
+      if (s.speed > 0.01 && s.grounded) {
         // Frequency increases aggressively with speed for very tight, quick turns
         const turnFreq = 3.5 + s.speed * 2.5; 
         s.carvePhase += dt * turnFreq;
@@ -549,6 +606,7 @@ export class Skiers {
       if (ngx < 0 || ngx >= res || ngz < 0 || ngz >= res) {
         s.active = false;
         s.mesh.visible = false;
+        if (s.chuteGroup) s.chuteGroup.visible = false;
         continue;
       }
       let terrainH = this.terrain.getInterpolatedHeight(s.wx, s.wz);
@@ -556,29 +614,105 @@ export class Skiers {
         terrainH = seaLevel + water.getWaveHeight(s.wx, s.wz);
       }
 
-      // Vertical physics
+      // Proactive Cliff Jump Detection: probe 3.5 units ahead along movement direction
+      if (s.grounded && s.speed > 2.5) {
+        const normVx = (s.vx + carveX) / (s.speed || 1);
+        const normVz = (s.vz + carveZ) / (s.speed || 1);
+        const lookAheadX = s.wx + normVx * 3.5;
+        const lookAheadZ = s.wz + normVz * 3.5;
+        const lookAheadH = this.terrain.getInterpolatedHeight(lookAheadX, lookAheadZ);
+        
+        // If terrain drops off steeply in front of skier (cliff edge!)
+        if (lookAheadH < terrainH - 3.0 || (terrainH - lookAheadH) > 4.5) {
+          s.grounded = false;
+          s.vy = Math.max(s.vy, 4.0); // Pop off cliff edge!
+          s.paragliding = true;       // Instantly pop parachute on cliff launch!
+          s.glideHeading = Math.atan2(s.vx, s.vz);
+        }
+      }
+
+      // Vertical physics & Straight Paragliding
       if (s.grounded) {
         const dh = terrainH - s.y;
         const slopeVy = dh / dt;
-        if (slopeVy < -15 && s.speed > 8) {
+        if (slopeVy < -12 && s.speed > 6) {
           s.grounded = false;
           s.vy = slopeVy;
+          s.glideHeading = Math.atan2(s.vx, s.vz);
         } else {
           s.y = terrainH;
           s.vy = slopeVy;
+          s.paragliding = false;
         }
       } else {
-        s.vy -= 25.0 * dt; // Gravity
+        const heightAboveGround = s.y - terrainH;
+
+        // Deploy parachute if high enough above ground
+        if (heightAboveGround > 1.8 && s.vy < 3.0) {
+          if (!s.paragliding) {
+            s.paragliding = true;
+            s.glideHeading = Math.atan2(s.vx, s.vz);
+          }
+        }
+
+        if (s.paragliding) {
+          if (s.glideHeading === undefined) {
+            s.glideHeading = Math.atan2(s.vx, s.vz);
+          }
+
+          // Smoothly align glide heading toward downhill direction without oscillating
+          const downhillHeading = Math.atan2(-gradX, -gradZ);
+          let diff = downhillHeading - s.glideHeading;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          s.glideHeading += diff * 0.4 * dt;
+
+          // Straight, aerodynamic forward flight vector
+          const glideSpeed = 11.5;
+          s.vx = Math.sin(s.glideHeading) * glideSpeed;
+          s.vz = Math.cos(s.glideHeading) * glideSpeed;
+          s.speed = glideSpeed;
+
+          // Smooth, realistic linear sink rate
+          s.vy = THREE.MathUtils.lerp(s.vy, -2.4, dt * 3.0);
+          
+          s._bankAngle = diff * 0.3; // Subtle wing bank when making gentle course adjustments
+        } else {
+          // Standard gravity when falling without chute
+          s.vy -= 22.0 * dt;
+          s._bankAngle = 0;
+        }
+
         s.y += s.vy * dt;
+
+        // Touchdown on terrain
         if (s.y <= terrainH) {
           s.y = terrainH;
           s.vy = 0;
           s.grounded = true;
+          s.paragliding = false;
+          s._bankAngle = 0;
         }
       }
 
       // Update mesh position
       s.mesh.position.set(s.wx, s.y + 0.15, s.wz);
+
+      // Parachute Visual Mesh Position & Level Flight
+      if (s.chuteGroup) {
+        if (s.paragliding && s.active && s.mesh.visible) {
+          s.chuteGroup.visible = true;
+          s.chuteGroup.position.set(s.wx, s.y + 0.15, s.wz);
+          s.chuteGroup.rotation.y = s.mesh.rotation.y;
+          
+          // Level flight with subtle banking during turns
+          const targetBank = s._bankAngle || 0;
+          s.chuteGroup.rotation.z = THREE.MathUtils.lerp(s.chuteGroup.rotation.z, targetBank, 0.1);
+          s.chuteGroup.rotation.x = 0;
+        } else {
+          s.chuteGroup.visible = false;
+        }
+      }
 
       // Stop if we run out of snow (either natural snowpack or painted snow)
       const isOnSnow = this.terrain.getSnowCover(s.wx, s.wz) > 0.05;
@@ -661,9 +795,11 @@ export class Skiers {
       s.state = 'walking';
       s.targetStation = closestBase;
       s.targetLine = targetLine;
+      if (s.chuteGroup) s.chuteGroup.visible = false;
     } else {
       s.active = false;
       s.mesh.visible = false;
+      if (s.chuteGroup) s.chuteGroup.visible = false;
     }
   }
 
@@ -672,6 +808,13 @@ export class Skiers {
       this.group.remove(s.trail);
       s.trail.geometry.dispose();
       s.trail.material.dispose();
+      if (s.chuteGroup) {
+        this.group.remove(s.chuteGroup);
+        s.chuteGroup.traverse(child => {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) child.material.dispose();
+        });
+      }
     }
     this.skiers = [];
     this.skierIM.count = 0;
