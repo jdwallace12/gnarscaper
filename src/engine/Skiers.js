@@ -497,14 +497,17 @@ export class Skiers {
           // Evaluate this direction:
           // 1. We strongly prefer going straight relative to our current velocity
           const forwardBias = Math.cos(angleOffset) * 8.0;
-          // 2. We penalize tracked-out snow heavily so they hunt for fresh powder
+          // 2. We actively seek out and prefer steep downhill slopes!
+          const heightDrop = Math.max(0, currentH - ph);
+          const steepBonus = heightDrop * 15.0;
+          // 3. We penalize tracked-out snow heavily so they hunt for fresh powder
           const trackPenalty = trackedAmount * 0.08;
-          // 3. We absolutely refuse to ski uphill unless necessary
+          // 4. We absolutely refuse to ski uphill unless necessary
           const hillPenalty = climbNeeded * 30.0;
-          // 4. We desperately avoid dirt
+          // 5. We desperately avoid dirt
           const dirtPenalty = isDirt ? 100.0 : 0;
           
-          const score = forwardBias - trackPenalty - hillPenalty - dirtPenalty;
+          const score = forwardBias + steepBonus - trackPenalty - hillPenalty - dirtPenalty;
           
           if (score > bestScore) {
             bestScore = score;
@@ -513,8 +516,8 @@ export class Skiers {
           }
         }
         
-        // Gently nudge them towards the best untouched snow
-        const traverseStrength = 3.0;
+        // Gently nudge them towards the best untouched snow and steep lines
+        const traverseStrength = 3.5;
         s.vx += bestDx * traverseStrength * dt;
         s.vz += bestDz * traverseStrength * dt;
         
@@ -614,19 +617,19 @@ export class Skiers {
         terrainH = seaLevel + water.getWaveHeight(s.wx, s.wz);
       }
 
-      // Proactive Cliff Jump Detection: probe 3.5 units ahead along movement direction
+      // Proactive Cliff Jump Detection: probe 3.8 units ahead for major cliff drop-offs (> 4.8 height drop)
       if (s.grounded && s.speed > 2.5) {
         const normVx = (s.vx + carveX) / (s.speed || 1);
         const normVz = (s.vz + carveZ) / (s.speed || 1);
-        const lookAheadX = s.wx + normVx * 3.5;
-        const lookAheadZ = s.wz + normVz * 3.5;
+        const lookAheadX = s.wx + normVx * 3.8;
+        const lookAheadZ = s.wz + normVz * 3.8;
         const lookAheadH = this.terrain.getInterpolatedHeight(lookAheadX, lookAheadZ);
         
-        // If terrain drops off steeply in front of skier (cliff edge!)
-        if (lookAheadH < terrainH - 3.0 || (terrainH - lookAheadH) > 4.5) {
+        // Launch off genuine cliff drops
+        if (lookAheadH < terrainH - 4.8) {
           s.grounded = false;
-          s.vy = Math.max(s.vy, 4.0); // Pop off cliff edge!
-          s.paragliding = true;       // Instantly pop parachute on cliff launch!
+          s.vy = Math.max(s.vy, 4.5); // Pop off cliff edge!
+          s.paragliding = true;       // Deploy parachute for cliff flight!
           s.glideHeading = Math.atan2(s.vx, s.vz);
         }
       }
@@ -635,7 +638,8 @@ export class Skiers {
       if (s.grounded) {
         const dh = terrainH - s.y;
         const slopeVy = dh / dt;
-        if (slopeVy < -12 && s.speed > 6) {
+        // Allow skiing down very steep slopes (slopeVy up to -22.0) before launching
+        if (slopeVy < -22.0 && s.speed > 8.0) {
           s.grounded = false;
           s.vy = slopeVy;
           s.glideHeading = Math.atan2(s.vx, s.vz);
@@ -647,8 +651,8 @@ export class Skiers {
       } else {
         const heightAboveGround = s.y - terrainH;
 
-        // Deploy parachute if high enough above ground
-        if (heightAboveGround > 1.8 && s.vy < 3.0) {
+        // Deploy parachute when > 3.0 units above ground (high cliff drop!)
+        if (heightAboveGround > 3.0 && s.vy < 3.0) {
           if (!s.paragliding) {
             s.paragliding = true;
             s.glideHeading = Math.atan2(s.vx, s.vz);
