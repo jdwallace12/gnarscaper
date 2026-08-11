@@ -56,14 +56,21 @@ export class BrushEngine {
     const radiusChanged = this._lastRadius !== this.radius;
     this._lastRadius = this.radius;
 
+    const mouseMoved = !this.mouse.equals(this._lastMouse);
+    const camPosMoved = this.camera.position.distanceToSquared(this._lastCamPos) > 0.0001;
+    const camRotMoved = Math.abs(this.camera.rotation.x - this._lastCamRot.x) > 0.0001 ||
+                        Math.abs(this.camera.rotation.y - this._lastCamRot.y) > 0.0001 ||
+                        Math.abs(this.camera.rotation.z - this._lastCamRot.z) > 0.0001;
+
     if (!stateChanged && 
         !radiusChanged &&
         !this.painting &&
-        this.mouse.equals(this._lastMouse) &&
-        this.camera.position.equals(this._lastCamPos) &&
-        this.camera.rotation.equals(this._lastCamRot)) {
+        !mouseMoved &&
+        !camPosMoved &&
+        !camRotMoved) {
       return; // Skip expensive 65k face raycast if nothing moved
     }
+
     
     this._lastMouse.copy(this.mouse);
     this._lastCamPos.copy(this.camera.position);

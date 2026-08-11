@@ -170,35 +170,47 @@ function _generateInitialTerrain() {
   }
 }
 
-function computeColors(seaLevel) {
+let currentColors = null;
+
+function computeColors(seaLevel, minX = 0, maxX = resolution - 1, minZ = 0, maxZ = resolution - 1) {
   const count = resolution * resolution;
-  const colors = new Float32Array(count * 3);
+  if (!currentColors || currentColors.length !== count * 3) {
+    currentColors = new Float32Array(count * 3);
+    minX = 0; maxX = resolution - 1;
+    minZ = 0; maxZ = resolution - 1;
+  }
+
   const spacing = size / (resolution - 1);
   const invSpacing2 = 1 / (2 * spacing);
 
-  for (let i = 0; i < count; i++) {
-    const h = heightmap[i];
+  const startX = Math.max(0, Math.floor(minX) - 2);
+  const endX = Math.min(resolution - 1, Math.ceil(maxX) + 2);
+  const startZ = Math.max(0, Math.floor(minZ) - 2);
+  const endZ = Math.min(resolution - 1, Math.ceil(maxZ) + 2);
 
-    const gx = i % resolution;
-    const gz = (i / resolution) | 0;
+  for (let gz = startZ; gz <= endZ; gz++) {
+    for (let gx = startX; gx <= endX; gx++) {
+      const i = gz * resolution + gx;
+      const h = heightmap[i];
 
-    const hL = gx > 0 ? heightmap[gz * resolution + (gx - 1)] : heightmap[gz * resolution + gx];
-    const hR = gx < resolution - 1 ? heightmap[gz * resolution + (gx + 1)] : heightmap[gz * resolution + gx];
-    const hU = gz > 0 ? heightmap[(gz - 1) * resolution + gx] : heightmap[gz * resolution + gx];
-    const hD = gz < resolution - 1 ? heightmap[(gz + 1) * resolution + gx] : heightmap[gz * resolution + gx];
+      const hL = gx > 0 ? heightmap[gz * resolution + (gx - 1)] : heightmap[gz * resolution + gx];
+      const hR = gx < resolution - 1 ? heightmap[gz * resolution + (gx + 1)] : heightmap[gz * resolution + gx];
+      const hU = gz > 0 ? heightmap[(gz - 1) * resolution + gx] : heightmap[gz * resolution + gx];
+      const hD = gz < resolution - 1 ? heightmap[(gz + 1) * resolution + gx] : heightmap[gz * resolution + gx];
 
-    const gradX = (hR - hL) * invSpacing2;
-    const gradZ = (hD - hU) * invSpacing2;
-    const steepness = Math.sqrt(gradX * gradX + gradZ * gradZ);
+      const gradX = (hR - hL) * invSpacing2;
+      const gradZ = (hD - hU) * invSpacing2;
+      const steepness = Math.sqrt(gradX * gradX + gradZ * gradZ);
 
-    const curvature = hL + hR + hU + hD - 4.0 * h;
+      const curvature = hL + hR + hU + hD - 4.0 * h;
 
-    const c = _colorForHeight(h, seaLevel, steepness, snowmap[i], curvature, grassmap ? grassmap[i] : 0);
-    colors[i * 3 + 0] = c.r;
-    colors[i * 3 + 1] = c.g;
-    colors[i * 3 + 2] = c.b;
+      const c = _colorForHeight(h, seaLevel, steepness, snowmap[i], curvature, grassmap ? grassmap[i] : 0);
+      currentColors[i * 3 + 0] = c.r;
+      currentColors[i * 3 + 1] = c.g;
+      currentColors[i * 3 + 2] = c.b;
+    }
   }
-  return colors;
+  return currentColors;
 }
 
 self.onmessage = function (e) {
@@ -207,6 +219,7 @@ self.onmessage = function (e) {
   if (msg.type === 'init') {
     size = msg.size || 200;
     resolution = msg.resolution || 256;
+    currentColors = null;
     
     heightmap = new Float32Array(resolution * resolution);
     snowmap = new Float32Array(resolution * resolution);
@@ -252,7 +265,7 @@ self.onmessage = function (e) {
         if (isNaN(grassmap[i])) grassmap[i] = 0;
       }
 
-      const colors = computeColors(currentSeaLevel);
+      const colors = computeColors(currentSeaLevel, cx - radius, cx + radius, cz - radius, cz + radius);
       
       self.postMessage({
         type: 'sculpt_done',
@@ -275,6 +288,7 @@ self.onmessage = function (e) {
     for (let i = 0; i < heightmap.length; i++) {
       heightmap[i] += delta;
     }
+    currentColors = null;
     const colors = computeColors(currentSeaLevel);
     self.postMessage({
       type: 'shift_done',
@@ -286,7 +300,9 @@ self.onmessage = function (e) {
     heightmap.fill(0);
     snowmap.fill(0);
     grassmap.fill(0);
+    currentColors = null;
     const colors = computeColors(currentSeaLevel);
+
     self.postMessage({
       type: 'reset_done',
       heightmap: new Float32Array(heightmap),

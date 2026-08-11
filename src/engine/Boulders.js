@@ -171,9 +171,18 @@ export class Boulders {
     });
   }
 
-  updatePositions(seaLevel = 0) {
+  updatePositions(seaLevel = 0, centerWorldX = null, centerWorldZ = null, radiusWorld = null) {
     let needsUpdate = false;
+    const hasFilter = centerWorldX !== null && centerWorldZ !== null && radiusWorld !== null;
+    const radSq = hasFilter ? (radiusWorld + 5) * (radiusWorld + 5) : 0;
+
     for (const b of this.boulders) {
+      if (hasFilter) {
+        const dx = b.worldX - centerWorldX;
+        const dz = b.worldZ - centerWorldZ;
+        if (dx * dx + dz * dz > radSq) continue;
+      }
+
       const { gx, gz } = this.terrain.worldToGrid(b.worldX, b.worldZ);
       const h = this.terrain.getHeight(gx, gz);
       const isSnowy = h >= (seaLevel + 37);
@@ -192,6 +201,7 @@ export class Boulders {
       });
     }
   }
+
 
   clear() {
     this.boulders = [];

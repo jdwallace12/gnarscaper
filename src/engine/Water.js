@@ -24,11 +24,40 @@ export class Water {
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.position.y = seaLevel;
     this.mesh.receiveShadow = true;
+
+    this._depthMap = null;
+    this.updateDepthMap();
   }
 
   setSeaLevel(level) {
     this.seaLevel = level;
     this.mesh.position.y = level;
+    this.updateDepthMap();
+  }
+
+  updateDepthMap() {
+    const pos = this.geometry.attributes.position;
+    const count = pos.count;
+    if (!this._depthMap || this._depthMap.length !== count) {
+      this._depthMap = new Float32Array(count);
+    }
+    for (let i = 0; i < count; i++) {
+      const wx = pos.getX(i);
+      const wz = pos.getZ(i);
+      if (this.terrain) {
+        const terrainH = this.terrain.getInterpolatedHeight(wx, wz);
+        const depth = this.seaLevel - terrainH;
+        if (depth <= 0) {
+          this._depthMap[i] = 0.0;
+        } else if (depth < 5) {
+          this._depthMap[i] = depth / 5;
+        } else {
+          this._depthMap[i] = 1.0;
+        }
+      } else {
+        this._depthMap[i] = 1.0;
+      }
+    }
   }
 
   /**
@@ -78,19 +107,24 @@ export class Water {
   update(dt) {
     this._time += dt;
 
+    if (!this._depthMap) this.updateDepthMap();
+
     const pos = this.geometry.attributes.position;
     const count = pos.count;
-    const half = this.size / 2;
 
     for (let i = 0; i < count; i++) {
+      const mult = this._depthMap[i];
+      if (mult <= 0) {
+        pos.setY(i, 0);
+        continue;
+      }
       const wx = pos.getX(i);
       const wz = pos.getZ(i);
 
-      // Animate Y with wave function and terrain dampening
-      pos.setY(i, this.getWaveHeight(wx, wz));
+      pos.setY(i, Water.waveHeight(wx, wz, this._time) * mult);
     }
 
     pos.needsUpdate = true;
-    this.geometry.computeVertexNormals();
   }
 }
+

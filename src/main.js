@@ -608,7 +608,7 @@ canvas.addEventListener('touchend', handleInteractEnd);
 canvas.addEventListener('touchcancel', handleInteractEnd);
 
 // ---- Render loop ----
-const PHYSICS_DT = 1 / 120; // Fixed 120Hz physics timestep
+const PHYSICS_DT = 1 / 60; // Optimized 60Hz physics timestep
 let physicsAccumulator = 0;
 
 function animate() {
@@ -714,9 +714,18 @@ function animate() {
 
   const modified = brush.update(seaLevel);
   if (modified) {
-    trees.updatePositions(seaLevel);
-    boulders.updatePositions(seaLevel);
+    water.updateDepthMap();
+    if (brush.intersectionPoint) {
+      const worldRadius = (brush.radius / terrain.resolution) * terrain.size;
+      trees.updatePositions(seaLevel, brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius);
+      boulders.updatePositions(seaLevel, brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius);
+    } else {
+      trees.updatePositions(seaLevel);
+      boulders.updatePositions(seaLevel);
+    }
   }
+
+
 
   // Visual-only updates (don't need perfect physics sync)
   snow.update(dt);

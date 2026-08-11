@@ -259,9 +259,18 @@ export class Trees {
     im.count--;
   }
 
-  updatePositions(seaLevel = 0) {
+  updatePositions(seaLevel = 0, centerWorldX = null, centerWorldZ = null, radiusWorld = null) {
     let needsUpdate = false;
+    const hasFilter = centerWorldX !== null && centerWorldZ !== null && radiusWorld !== null;
+    const radSq = hasFilter ? (radiusWorld + 5) * (radiusWorld + 5) : 0;
+
     for (const t of this.trees) {
+      if (hasFilter) {
+        const dx = t.worldX - centerWorldX;
+        const dz = t.worldZ - centerWorldZ;
+        if (dx * dx + dz * dz > radSq) continue;
+      }
+
       const { gx, gz } = this.terrain.worldToGrid(t.worldX, t.worldZ);
       const h = this.terrain.getHeight(gx, gz);
       const isSnowy = h >= (seaLevel + 37);
@@ -283,6 +292,7 @@ export class Trees {
       });
     }
   }
+
 
   clear() {
     this.trees = [];
