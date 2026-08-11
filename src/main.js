@@ -364,45 +364,23 @@ async function doSaveMap(forcePicker = false) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  console.log("Exported Chairlifts: ", data.chairlifts);
-  ui.showSaveSuccess();
 }
 
-async function triggerLoadMap() {
-  if ('showOpenFilePicker' in window) {
-    try {
-      const [handle] = await window.showOpenFilePicker({
-        types: [{
-          description: 'JSON Files',
-          accept: { 'application/json': ['.json'] },
-        }],
-      });
-      currentFileHandle = handle;
-      const file = await handle.getFile();
-      const text = await file.text();
-      loadMapData(JSON.parse(text));
-      return;
-    } catch (err) {
-      if (err.name === 'AbortError') return;
-      console.error("FileSystem API failed, falling back:", err);
-    }
-  }
 
-  // Fallback
+function triggerLoadMap() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.json';
-  input.onchange = e => {
+  input.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = re => {
+    reader.onload = (evt) => {
       try {
-        const data = JSON.parse(re.target.result);
+        const data = JSON.parse(evt.target.result);
         loadMapData(data);
       } catch (err) {
-        console.error("Failed to load map:", err);
-        alert("Invalid map file!");
+        console.error('Failed to parse map file:', err);
       }
     };
     reader.readAsText(file);
@@ -411,11 +389,8 @@ async function triggerLoadMap() {
 }
 
 function loadMapData(data) {
-  if (!data || !data.heightmap) return;
+  history.push(terrain.snapshot());
 
-  history.push(terrain.snapshot()); // Save old state for undo
-
-  // Restore Settings
   seaLevel = data.seaLevel ?? 1;
   currentBaseElevation = data.baseElevation ?? 0;
   terrain.snowPack = data.snowPack ?? 50;
@@ -431,9 +406,11 @@ function loadMapData(data) {
   // Restore Terrain through Worker to trigger geometry calculations
   terrain.restore({
     heightmap: data.heightmap,
-    snowmap: data.snowmap
+    snowmap: data.snowmap,
+    grassmap: data.grassmap
   });
   terrain.updateMesh(seaLevel);
+
 
   // Clear existing items
   trees.clear();

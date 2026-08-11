@@ -11,18 +11,20 @@ const ALPINE_MEADOW = new THREE.Color(0x6b7f4a);
 const ROCK = new THREE.Color(0x6b6b6b);
 const ROCK_DARK = new THREE.Color(0x4a4a4a);
 const SNOW = new THREE.Color(0xf0f0f0);
+const LUSH_GRASS = new THREE.Color(0x2d5a27);
 
 let size = 200;
 let resolution = 256;
 let heightmap = null;
 let snowmap = null;
+let grassmap = null;
 let currentSeaLevel = 0;
 let currentSnowPack = 50;
 
 const _tmpBase = new THREE.Color();
 const _tmpResult = new THREE.Color();
 
-function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0, curvature = 0) {
+function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0, curvature = 0, grassAmount = 0) {
   const base = _tmpBase;
   const result = _tmpResult;
   
@@ -51,6 +53,12 @@ function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0, curvature =
   if (h > seaLevel + 0.5 && steepness > 0.6) {
     const steepFactor = Math.min((steepness - 0.6) / 0.5, 1.0);
     result.lerpColors(base, ROCK, steepFactor);
+    base.copy(result);
+  }
+
+  if (grassAmount > 0.02) {
+    const lushFactor = Math.min(grassAmount, 1.0);
+    result.lerpColors(base, LUSH_GRASS, lushFactor);
     base.copy(result);
   }
 
@@ -148,24 +156,21 @@ function _generateInitialTerrain() {
       const baseTerrainHeight = (base + 0.3) * 40.0;
       
       // Scale height: taller mountains with dramatic relief
-      const maxHeight = 180;
-      let h = baseTerrainHeight + envelope * maxHeight * (0.5 + mainNoise * 0.5);
+      const mountainHeight = (mainNoise * 90.0 + detail * 15.0);
 
-      // Add fine detail scaled by elevation (more detail at higher elevation)
-      h += detail * 4.0 * Math.max(0.2, envelope);
-
+      // Combine base terrain with mountain spine
+      heightmap[z * res + x] = baseTerrainHeight + mountainHeight * falloff;
+      
       // ---- Edge falloff ---- 
       // Smooth terrain to zero at map boundaries
       const edgeX = 1 - Math.pow(2 * nx - 1, 6);
       const edgeZ = 1 - Math.pow(2 * nz - 1, 6);
-      h *= Math.min(edgeX, edgeZ);
-
-      heightmap[z * res + x] = Math.max(0, h);
+      heightmap[z * res + x] *= Math.min(edgeX, edgeZ);
     }
   }
 }
 
-function computeColors(seaLevel = 0) {
+function computeColors(seaLevel) {
   const count = resolution * resolution;
   const colors = new Float32Array(count * 3);
   const spacing = size / (resolution - 1);
@@ -188,7 +193,7 @@ function computeColors(seaLevel = 0) {
 
     const curvature = hL + hR + hU + hD - 4.0 * h;
 
-    const c = _colorForHeight(h, seaLevel, steepness, snowmap[i], curvature);
+    const c = _colorForHeight(h, seaLevel, steepness, snowmap[i], curvature, grassmap ? grassmap[i] : 0);
     colors[i * 3 + 0] = c.r;
     colors[i * 3 + 1] = c.g;
     colors[i * 3 + 2] = c.b;
@@ -205,10 +210,12 @@ self.onmessage = function (e) {
     
     heightmap = new Float32Array(resolution * resolution);
     snowmap = new Float32Array(resolution * resolution);
+    grassmap = new Float32Array(resolution * resolution);
     
     if (msg.heightmap && msg.snowmap) {
       heightmap.set(msg.heightmap);
       snowmap.set(msg.snowmap);
+      if (msg.grassmap) grassmap.set(msg.grassmap);
     } else {
       _generateInitialTerrain();
     }
@@ -221,28 +228,28 @@ self.onmessage = function (e) {
       type: 'init_done',
       heightmap: new Float32Array(heightmap), // copy to send back
       snowmap: new Float32Array(snowmap),
+      grassmap: new Float32Array(grassmap),
       colors: colors
     });
   } 
   else if (msg.type === 'sculpt') {
-    const { toolName, cx, cz, radius, strength, isStart, toolState } = msg;
+    const { toolName, cx, cz, radius, strength, isStart, toolState, noiseAmount } = msg;
     const tool = TOOLS[toolName];
     
     if (tool && tool.apply) {
-      const { toolName, cx, cz, radius, strength, isStart, toolState, noiseAmount } = msg;
-      
       // Re-hydrate any necessary state for continuous tools like Ramp or Flatten
       if (toolState) {
         Object.assign(tool, toolState);
       }
       
-      const mapToApply = tool.isSnowBrush ? snowmap : heightmap;
-      tool.apply(mapToApply, resolution, cx, cz, radius, strength, isStart, noiseAmount, snowmap, heightmap);
+      const mapToApply = tool.isGrassBrush ? grassmap : (tool.isSnowBrush ? snowmap : heightmap);
+      tool.apply(mapToApply, resolution, cx, cz, radius, strength, isStart, noiseAmount, snowmap, heightmap, grassmap);
       
       // Sanitize: replace any NaNs with 0 to prevent disappearing terrain
       for (let i = 0; i < heightmap.length; i++) {
         if (isNaN(heightmap[i])) heightmap[i] = 0;
         if (isNaN(snowmap[i])) snowmap[i] = 0;
+        if (isNaN(grassmap[i])) grassmap[i] = 0;
       }
 
       const colors = computeColors(currentSeaLevel);
@@ -251,6 +258,7 @@ self.onmessage = function (e) {
         type: 'sculpt_done',
         heightmap: new Float32Array(heightmap),
         snowmap: new Float32Array(snowmap),
+        grassmap: new Float32Array(grassmap),
         colors: colors,
         // Send state back so main thread can store it if needed
         toolState: {
@@ -277,11 +285,13 @@ self.onmessage = function (e) {
   else if (msg.type === 'reset') {
     heightmap.fill(0);
     snowmap.fill(0);
+    grassmap.fill(0);
     const colors = computeColors(currentSeaLevel);
     self.postMessage({
       type: 'reset_done',
       heightmap: new Float32Array(heightmap),
       snowmap: new Float32Array(snowmap),
+      grassmap: new Float32Array(grassmap),
       colors: colors
     });
   }

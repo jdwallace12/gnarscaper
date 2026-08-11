@@ -10,6 +10,7 @@ export class Terrain {
     this.resolution = resolution;
     this.heightmap = new Float32Array(resolution * resolution);
     this.snowmap = new Float32Array(resolution * resolution);
+    this.grassmap = new Float32Array(resolution * resolution);
     this.snowPack = 50;
     this.seaLevel = 1;
 
@@ -63,6 +64,7 @@ export class Terrain {
     const msg = e.data;
     if (msg.heightmap) this.heightmap.set(msg.heightmap);
     if (msg.snowmap) this.snowmap.set(msg.snowmap);
+    if (msg.grassmap) this.grassmap.set(msg.grassmap);
     if (msg.toolState) this._toolState = msg.toolState;
 
     if (msg.colors || msg.heightmap) {
@@ -106,6 +108,12 @@ export class Terrain {
     if (gx < 0 || gx >= this.resolution || gz < 0 || gz >= this.resolution)
       return 0;
     return this.snowmap[gz * this.resolution + gx];
+  }
+
+  getGrassAmount(gx, gz) {
+    if (gx < 0 || gx >= this.resolution || gz < 0 || gz >= this.resolution)
+      return 0;
+    return this.grassmap[gz * this.resolution + gx];
   }
 
   setHeight(gx, gz, value) {
@@ -200,13 +208,15 @@ export class Terrain {
   snapshot() {
     return {
       heightmap: new Float32Array(this.heightmap),
-      snowmap: new Float32Array(this.snowmap)
+      snowmap: new Float32Array(this.snowmap),
+      grassmap: new Float32Array(this.grassmap)
     };
   }
 
   restore(snap) {
     if (snap.heightmap) this.heightmap.set(snap.heightmap);
     if (snap.snowmap) this.snowmap.set(snap.snowmap);
+    if (snap.grassmap) this.grassmap.set(snap.grassmap);
     
     this.worker.postMessage({
       type: 'init',
@@ -214,9 +224,11 @@ export class Terrain {
       resolution: this.resolution,
       heightmap: this.heightmap,
       snowmap: this.snowmap,
+      grassmap: this.grassmap,
       snowPack: this.snowPack
     });
   }
+
 
   reset(seaLevel = 0) {
     this.worker.postMessage({ type: 'reset' });
