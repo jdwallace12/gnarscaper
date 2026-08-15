@@ -397,4 +397,44 @@ self.onmessage = function (e) {
       colors: colors
     });
   }
+  else if (msg.type === 'flattenPad') {
+    baseSmoothHeightmap = null;
+    const { wx, wz, radius } = msg;
+    const half = size / 2;
+    const cx = Math.round(((wx + half) / size) * (resolution - 1));
+    const cz = Math.round(((wz + half) / size) * (resolution - 1));
+    
+    if (cx >= 0 && cx < resolution && cz >= 0 && cz < resolution) {
+      const gridRadius = Math.ceil((radius / size) * (resolution - 1));
+      const targetIndex = cz * resolution + cx;
+      const targetH = heightmap[targetIndex] || 0;
+
+      const minX = Math.max(0, cx - gridRadius);
+      const maxX = Math.min(resolution - 1, cx + gridRadius);
+      const minZ = Math.max(0, cz - gridRadius);
+      const maxZ = Math.min(resolution - 1, cz + gridRadius);
+
+      for (let gz = minZ; gz <= maxZ; gz++) {
+        for (let gx = minX; gx <= maxX; gx++) {
+          const dx = gx - cx;
+          const dz = gz - cz;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist <= gridRadius) {
+            const t = dist / gridRadius;
+            const falloff = (1 - t * t) * (1 - t * t);
+            const i = gz * resolution + gx;
+            heightmap[i] = heightmap[i] * (1 - falloff) + targetH * falloff;
+          }
+        }
+      }
+
+      currentColors = null;
+      const colors = computeColors(currentSeaLevel, minX, maxX, minZ, maxZ);
+      self.postMessage({
+        type: 'colors_update',
+        heightmap: new Float32Array(heightmap),
+        colors: colors
+      });
+    }
+  }
 };

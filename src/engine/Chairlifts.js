@@ -30,6 +30,14 @@ export class Chairlifts {
     const horizontalLength = Math.sqrt(dx * dx + dz * dz);
     if (horizontalLength < 5) return; // Too short!
 
+    // Flatten terrain pads under base (p1) and top (p2) stations so AI skiers can load on a flat platform
+    if (this.terrain && this.terrain.flattenPad) {
+      this.terrain.flattenPad(p1.x, p1.z, 12);
+      this.terrain.flattenPad(p2.x, p2.z, 12);
+      p1.y = this.terrain.getInterpolatedHeight(p1.x, p1.z);
+      p2.y = this.terrain.getInterpolatedHeight(p2.x, p2.z);
+    }
+
     // Determine how many towers we need (1 every ~30 world units)
     const towerSpacing = 30;
     const towerCount = Math.max(2, Math.floor(horizontalLength / towerSpacing));

@@ -242,6 +242,8 @@ export class Skiers {
       // Walking, waiting, and riding states handle their own logic
       // Grid boundary check only applies to actively skiing
       if (s.state === 'walking') {
+        s.paragliding = false;
+        if (s.chuteGroup) s.chuteGroup.visible = false;
         const dx = s.targetStation.x - s.wx;
         const dz = s.targetStation.z - s.wz;
         const dist = Math.sqrt(dx * dx + dz * dz);
@@ -261,11 +263,12 @@ export class Skiers {
       }
 
       if (s.state === 'waiting') {
-        // Look for an empty chair arriving at the base
-        const isP1Base = s.targetLine.p1.y < s.targetLine.p2.y;
-        const baseProgress = isP1Base ? 0.0 : 0.5;
+        s.paragliding = false;
+        if (s.chuteGroup) s.chuteGroup.visible = false;
+        // Look for an empty chair arriving at the base station (p1 / progress = 0.0)
+        const baseProgress = 0.0;
         let bestChair = null;
-        let bestPDiff = 0.03; // Wider window for boarding at the turnaround
+        let bestPDiff = 0.08; // Generous window for boarding at base
         
         for (const chair of s.targetLine.chairs) {
            if (chair.passenger) continue;
@@ -283,13 +286,14 @@ export class Skiers {
            bestChair.passenger = s;
            s.chair = bestChair;
            s.state = 'riding';
-           
            s.mesh.visible = true;
         }
         continue;
       }
 
       if (s.state === 'riding') {
+         s.paragliding = false;
+         if (s.chuteGroup) s.chuteGroup.visible = false;
          const p = s.chair.mesh.position;
          const chairAngle = s.chair.mesh.rotation.y;
          // sit sideways — keep wx/wz in sync with chair
@@ -300,9 +304,7 @@ export class Skiers {
          s.mesh.rotation.y = chairAngle + Math.PI / 2;
          s.mesh.scale.setScalar(1.0); // Make them larger temporarily!
 
-         
-         const isP1Base = s.targetLine.p1.y < s.targetLine.p2.y;
-         const peakProgress = isP1Base ? 0.5 : 0.0; // Dismount at peak
+         const peakProgress = 0.5; // Dismount at top station (p2)
          
          let pDiff = Math.abs(s.chair.progress - peakProgress);
          if (pDiff > 0.5) pDiff = 1.0 - pDiff;
@@ -713,8 +715,15 @@ export class Skiers {
         terrainH = seaLevel + water.getWaveHeight(s.wx, s.wz);
       }
 
+      const hasLifts = this._chairlifts && this._chairlifts.lines && this._chairlifts.lines.length > 0;
+      const disableChute = hasLifts || s.state === 'walking' || s.state === 'waiting' || s.state === 'riding' || this._isNearChairlift(s.wx, s.wz, 30);
+      if (disableChute) {
+        s.paragliding = false;
+        if (s.chuteGroup) s.chuteGroup.visible = false;
+      }
+
       // Proactive Cliff Jump Detection: probe 4.5 units ahead for major vertical cliff drop-offs (> 8.0 height drop)
-      if (s.grounded && s.speed > 3.0) {
+      if (s.grounded && s.speed > 3.0 && !disableChute) {
         const normVx = (s.vx + carveX) / (s.speed || 1);
         const normVz = (s.vz + carveZ) / (s.speed || 1);
         const lookAheadX = s.wx + normVx * 4.5;
@@ -748,7 +757,7 @@ export class Skiers {
         const heightAboveGround = s.y - terrainH;
 
         // Deploy parachute when high above ground (> 12.0 units for truly massive drops)
-        if (heightAboveGround > 12.0 && s.vy < 2.0) {
+        if (!disableChute && heightAboveGround > 12.0 && s.vy < 2.0) {
           if (!s.paragliding) {
             s.paragliding = true;
             s.glideHeading = Math.atan2(s.vx, s.vz);
@@ -800,7 +809,7 @@ export class Skiers {
 
       // Parachute Visual Mesh Position & Level Flight
       if (s.chuteGroup) {
-        if (s.paragliding && s.active && s.mesh.visible) {
+        if (s.paragliding && s.active && s.mesh.visible && !isNearLift) {
           s.chuteGroup.visible = true;
           s.chuteGroup.position.set(s.wx, s.y + 0.15, s.wz);
           s.chuteGroup.rotation.y = s.mesh.rotation.y;
@@ -873,9 +882,51 @@ export class Skiers {
     this._updateSnowParticles(dt);
   }
 
-  /** Remove all skiers and trails */
+  _isNearChairlift(wx, wz, threshold = 30) {
+    if (!this._chairlifts || !this._chairlifts.lines || this._chairlifts.lines.length === 0) return false;
+    for (const line of this._chairlifts.lines) {
+      const isP1Lower = line.p1.y < line.p2.y;
+      const base = isP1Lower ? line.p1 : line.p2;
+      const d1Sq = (wx - base.x) ** 2 + (wz - base.z) ** 2;
+      if (d1Sq <= threshold * threshold) return true;
+    }
+    return false;
+  }
+
   _handleStop(s, chairlifts) {
-    // Try parachute respawn to nearby skiable terrain first
+    // 1. If chairlifts exist, WALK TO THE CHAIRLIFT BASE STATION FIRST!
+    let closestBase = null;
+    let closestDistSq = Infinity;
+    let targetLine = null;
+
+    if (chairlifts && chairlifts.lines.length > 0) {
+      for (const line of chairlifts.lines) {
+        const base = line.p1;
+        const distSq = (s.wx - base.x) ** 2 + (s.wz - base.z) ** 2;
+        if (distSq < closestDistSq) {
+          closestDistSq = distSq;
+          closestBase = base;
+          targetLine = line;
+        }
+      }
+    }
+
+    if (closestBase) {
+      s.state = 'walking';
+      s.targetStation = closestBase;
+      s.targetLine = targetLine;
+      s.paragliding = false;
+      s.grounded = true;
+      if (s.chuteGroup) s.chuteGroup.visible = false;
+      s.trailPoints = [];
+      s.trailStartIndex = 0;
+      s.trail.geometry.setDrawRange(0, 0);
+      s.stuckCount = 0;
+      s.stuckTime = 0;
+      return;
+    }
+
+    // 2. Fallback: Only try parachute respawn if NO chairlifts exist on map!
     const respawnTarget = this._findRespawnTarget(s);
     if (respawnTarget) {
       s.state = 'paraglide_respawn';
@@ -892,33 +943,9 @@ export class Skiers {
       return;
     }
 
-    // Fallback: walk to nearest chairlift
-    let closestBase = null;
-    let closestDistSq = Infinity;
-    let targetLine = null;
-
-    if (chairlifts) {
-      for (const line of chairlifts.lines) {
-        const base = line.p1.y < line.p2.y ? line.p1 : line.p2;
-        const distSq = (s.wx - base.x) ** 2 + (s.wz - base.z) ** 2;
-        if (distSq < closestDistSq) {
-          closestDistSq = distSq;
-          closestBase = base;
-          targetLine = line;
-        }
-      }
-    }
-
-    if (closestBase) {
-      s.state = 'walking';
-      s.targetStation = closestBase;
-      s.targetLine = targetLine;
-      if (s.chuteGroup) s.chuteGroup.visible = false;
-    } else {
-      s.active = false;
-      s.mesh.visible = false;
-      if (s.chuteGroup) s.chuteGroup.visible = false;
-    }
+    s.active = false;
+    s.mesh.visible = false;
+    if (s.chuteGroup) s.chuteGroup.visible = false;
   }
 
   /**

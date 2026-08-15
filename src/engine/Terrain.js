@@ -279,4 +279,37 @@ export class Terrain {
   smoothGlobal(value = 0) {
     this.worker.postMessage({ type: 'smoothGlobal', value });
   }
+
+  /** Flatten a circular landing/boarding pad in local heightmap & sync with worker */
+  flattenPad(wx, wz, radius = 12) {
+    const half = this.size / 2;
+    const cx = Math.round(((wx + half) / this.size) * (this.resolution - 1));
+    const cz = Math.round(((wz + half) / this.size) * (this.resolution - 1));
+    if (cx < 0 || cx >= this.resolution || cz < 0 || cz >= this.resolution) return;
+
+    const gridRadius = Math.ceil((radius / this.size) * (this.resolution - 1));
+    const targetH = this.getHeight(cx, cz);
+
+    const minX = Math.max(0, cx - gridRadius);
+    const maxX = Math.min(this.resolution - 1, cx + gridRadius);
+    const minZ = Math.max(0, cz - gridRadius);
+    const maxZ = Math.min(this.resolution - 1, cz + gridRadius);
+
+    for (let gz = minZ; gz <= maxZ; gz++) {
+      for (let gx = minX; gx <= maxX; gx++) {
+        const dx = gx - cx;
+        const dz = gz - cz;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist <= gridRadius) {
+          const t = dist / gridRadius;
+          const falloff = (1 - t * t) * (1 - t * t);
+          const i = gz * this.resolution + gx;
+          this.heightmap[i] = this.heightmap[i] * (1 - falloff) + targetH * falloff;
+        }
+      }
+    }
+
+    this.worker.postMessage({ type: 'flattenPad', wx, wz, radius });
+    this.updateHeightmap();
+  }
 }

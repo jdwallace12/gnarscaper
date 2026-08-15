@@ -561,14 +561,19 @@ export class PlayerSkier {
     } else {
       // Air physics
       
-      // Deploy parachute if commanded and high enough
-      if (this._keys.paraglide && (this.y - terrainH > 2.0)) {
-        this.paragliding = true;
-      }
-      
-      // Cut parachute if command released
-      if (!this._keys.paraglide) {
+      const nearLift = this.state === 'riding' || this.state === 'waiting' || (chairlifts && this._isNearChairlift(this.wx, this.wz, chairlifts, 30));
+      if (nearLift) {
         this.paragliding = false;
+      } else {
+        // Deploy parachute if commanded and high enough
+        if (this._keys.paraglide && (this.y - terrainH > 2.0)) {
+          this.paragliding = true;
+        }
+        
+        // Cut parachute if command released
+        if (!this._keys.paraglide) {
+          this.paragliding = false;
+        }
       }
 
       if (this.paragliding) {
@@ -673,6 +678,7 @@ export class PlayerSkier {
   }
 
   _updateWaiting(dt) {
+    this.paragliding = false;
     this._prevWx = this.wx;
     this._prevWz = this.wz;
     this._prevY = this.y;
@@ -701,6 +707,7 @@ export class PlayerSkier {
   }
 
   _updateRiding(dt) {
+    this.paragliding = false;
     this._prevWx = this.wx;
     this._prevWz = this.wz;
     this._prevY = this.y;
@@ -772,11 +779,22 @@ export class PlayerSkier {
        const angle = (Math.abs(dx) < 0.001 && Math.abs(dz) < 0.001) ? this.heading : Math.atan2(dz, dx);
        this.vx = Math.cos(angle) * 5;
        this.vz = Math.sin(angle) * 5;
-    }
-    return true;
-  }
+     }
+     return true;
+   }
 
-  /** Interpolate visual position between prev and current physics state for sub-frame accuracy */
+   _isNearChairlift(wx, wz, chairlifts, threshold = 30) {
+     if (!chairlifts || !chairlifts.lines || chairlifts.lines.length === 0) return false;
+     for (const line of chairlifts.lines) {
+       const isP1Lower = line.p1.y < line.p2.y;
+       const base = isP1Lower ? line.p1 : line.p2;
+       const dSq = (wx - base.x) ** 2 + (wz - base.z) ** 2;
+       if (dSq <= threshold * threshold) return true;
+     }
+     return false;
+   }
+
+   /** Interpolate visual position between prev and current physics state for sub-frame accuracy */
   interpolateVisuals(alpha, dt) {
     if (!this.active || !this.mesh) return;
 
