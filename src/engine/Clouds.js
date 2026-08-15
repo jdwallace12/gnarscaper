@@ -10,7 +10,7 @@ export class Clouds {
     // Wind dynamics (serene drifting)
     this.windAngle = Math.PI * 0.25; // Blowing towards northeast
     this.windSpeed = 2.0;            // Units per second
-    this.cloudCoverage = 50;         // Default 50% coverage
+    this.cloudCoverage = 20;         // Default 20% coverage
 
     const sphereGeo = new THREE.SphereGeometry(1, 24, 24);
 
@@ -90,7 +90,7 @@ export class Clouds {
     this.corePuffList = [];
     this.shellPuffList = [];
 
-    const coverage = (this.cloudCoverage !== undefined ? this.cloudCoverage : 50) / 100;
+    const coverage = (this.cloudCoverage !== undefined ? this.cloudCoverage : 20) / 100;
     if (coverage <= 0) {
       this.coreMeshes.count = 0;
       this.shellMeshes.count = 0;
@@ -365,7 +365,7 @@ export class Clouds {
     const positions = this.geometry.attributes.position.array;
     const velocities = this.geometry.attributes.velocity.array;
 
-    const coverage = (this.cloudCoverage !== undefined ? this.cloudCoverage : 50) / 100;
+    const coverage = (this.cloudCoverage !== undefined ? this.cloudCoverage : 20) / 100;
     const activeParticles = Math.round(1500 + coverage * (this.particleCount - 1500));
     this.geometry.setDrawRange(0, activeParticles);
 

@@ -19,7 +19,7 @@ let heightmap = null;
 let snowmap = null;
 let grassmap = null;
 let currentSeaLevel = 0;
-let currentSnowPack = 50;
+let currentSnowPack = 80;
 
 const _tmpBase = new THREE.Color();
 const _tmpResult = new THREE.Color();
@@ -213,10 +213,13 @@ function computeColors(seaLevel, minX = 0, maxX = resolution - 1, minZ = 0, maxZ
   return currentColors;
 }
 
+let baseSmoothHeightmap = null;
+
 self.onmessage = function (e) {
   const msg = e.data;
 
   if (msg.type === 'init') {
+    baseSmoothHeightmap = null;
     size = msg.size || 200;
     resolution = msg.resolution || 256;
     currentColors = null;
@@ -246,6 +249,7 @@ self.onmessage = function (e) {
     });
   } 
   else if (msg.type === 'sculpt') {
+    baseSmoothHeightmap = null;
     const { toolName, cx, cz, radius, strength, isStart, toolState, noiseAmount } = msg;
     const tool = TOOLS[toolName];
     
@@ -284,6 +288,7 @@ self.onmessage = function (e) {
     }
   }
   else if (msg.type === 'shiftGlobal') {
+    baseSmoothHeightmap = null;
     const { delta } = msg;
     for (let i = 0; i < heightmap.length; i++) {
       heightmap[i] += delta;
@@ -297,6 +302,7 @@ self.onmessage = function (e) {
     });
   }
   else if (msg.type === 'reset') {
+    baseSmoothHeightmap = null;
     heightmap.fill(0);
     snowmap.fill(0);
     grassmap.fill(0);
@@ -320,6 +326,7 @@ self.onmessage = function (e) {
     });
   }
   else if (msg.type === 'updateHeightmap') {
+    baseSmoothHeightmap = null;
     if (msg.heightmap) heightmap.set(msg.heightmap);
     const colors = computeColors(currentSeaLevel);
     self.postMessage({
@@ -333,6 +340,60 @@ self.onmessage = function (e) {
     const colors = computeColors(currentSeaLevel);
     self.postMessage({
       type: 'colors_update',
+      colors: colors
+    });
+  }
+  else if (msg.type === 'smoothStart') {
+    baseSmoothHeightmap = new Float32Array(heightmap);
+  }
+  else if (msg.type === 'smoothGlobal') {
+    const value = msg.value !== undefined ? msg.value : (msg.strength ? msg.strength * 100 : 0);
+    
+    if (!baseSmoothHeightmap) {
+      baseSmoothHeightmap = new Float32Array(heightmap);
+    }
+
+    if (value <= 0) {
+      heightmap.set(baseSmoothHeightmap);
+    } else {
+      heightmap.set(baseSmoothHeightmap);
+
+      const passes = Math.min(8, Math.ceil(value / 12));
+      const strength = Math.min(0.75, (value / 100) * 0.85);
+
+      for (let p = 0; p < passes; p++) {
+        const copy = new Float32Array(heightmap);
+        for (let gz = 0; gz < resolution; gz++) {
+          for (let gx = 0; gx < resolution; gx++) {
+            const i = gz * resolution + gx;
+            let sum = 0;
+            let count = 0;
+            for (let dz = -1; dz <= 1; dz++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = gx + dx;
+                const nz = gz + dz;
+                if (nx >= 0 && nx < resolution && nz >= 0 && nz < resolution) {
+                  sum += copy[nz * resolution + nx];
+                  count++;
+                }
+              }
+            }
+            const avg = sum / count;
+            heightmap[i] += (avg - heightmap[i]) * strength;
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < heightmap.length; i++) {
+      if (isNaN(heightmap[i])) heightmap[i] = 0;
+    }
+
+    currentColors = null;
+    const colors = computeColors(currentSeaLevel);
+    self.postMessage({
+      type: 'smooth_done',
+      heightmap: new Float32Array(heightmap),
       colors: colors
     });
   }

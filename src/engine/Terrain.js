@@ -11,7 +11,7 @@ export class Terrain {
     this.heightmap = new Float32Array(resolution * resolution);
     this.snowmap = new Float32Array(resolution * resolution);
     this.grassmap = new Float32Array(resolution * resolution);
-    this.snowPack = 50;
+    this.snowPack = 80;
     this.seaLevel = 1;
 
     this.geometry = new THREE.PlaneGeometry(
@@ -268,5 +268,15 @@ export class Terrain {
   updateSnowPack(snowPack = 50) {
     this.snowPack = snowPack;
     this.worker.postMessage({ type: 'updateSnowPack', snowPack });
+  }
+
+  /** Capture pre-smooth baseline snapshot */
+  smoothStart() {
+    this.worker.postMessage({ type: 'smoothStart' });
+  }
+
+  /** Apply global smoothing (0-100) across the whole terrain heightmap */
+  smoothGlobal(value = 0) {
+    this.worker.postMessage({ type: 'smoothGlobal', value });
   }
 }

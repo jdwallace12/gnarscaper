@@ -14,7 +14,7 @@ export class BrushEngine {
     this.tool = null;       // current tool object
     this.radius = 16;
     this.strength = 0.6;
-    this.noiseAmount = 0.5;
+    this.noiseAmount = 0.1;
     this.painting = false;
     this._isStart = false;
     this.enabled = true; // Visibility and interaction flag

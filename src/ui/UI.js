@@ -1,8 +1,8 @@
 import { TOOLS } from '../tools/tools.js';
 
 export class UI {
-  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset }) {
-    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset };
+  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset, onSmoothGlobal, onSmoothStart }) {
+    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset, onSmoothGlobal, onSmoothStart };
     this.activeToolKey = 'raise';
     this.presetKeys = ['golden', 'noon', 'sunset', 'night'];
     this.currentPresetIdx = 0;
@@ -125,6 +125,16 @@ export class UI {
       this.timeOfDaySlider.value = val;
       if (this.timeOfDaySlider.valSpan) {
         this.timeOfDaySlider.valSpan.textContent = Number.isInteger(val) ? val : parseFloat(val).toFixed(1);
+      }
+    }
+  }
+
+  setSmoothnessSlider(val) {
+    if (this.smoothnessSlider) {
+      this.smoothnessSlider.value = val;
+      this._lastSmoothVal = val;
+      if (this.smoothnessSlider.valSpan) {
+        this.smoothnessSlider.valSpan.textContent = Number.isInteger(val) ? val : parseFloat(val).toFixed(0);
       }
     }
   }
@@ -273,7 +283,7 @@ export class UI {
       this.callbacks.onBrushStrength(v);
     }, 0.05, '<kbd>Cmd/Ctrl + [</kbd> and <kbd>]</kbd>');
 
-    this.noiseSlider = this._slider(slidersContainer, 'Noise Level', 0.0, 1.0, 0.5, (v) => {
+    this.noiseSlider = this._slider(slidersContainer, 'Noise Level', 0.0, 1.0, 0.1, (v) => {
       this.callbacks.onNoiseLevel(v);
     }, 0.05, '<kbd>Shift + [</kbd> and <kbd>]</kbd>');
 
@@ -321,11 +331,24 @@ export class UI {
       this.callbacks.onSeaLevel(v);
     }, 0.5);
 
-    this.snowPackSlider = this._slider(sidebar, 'Snow Pack', 0, 100, 50, (v) => {
+    this.snowPackSlider = this._slider(sidebar, 'Snow Pack', 0, 100, 80, (v) => {
       this.callbacks.onSnowPack(v);
     }, 1);
 
-    this.cloudAmountSlider = this._slider(sidebar, 'Cloud Amount', 0, 100, 50, (v) => {
+    this.smoothnessSlider = this._slider(sidebar, 'Terrain Smoothness', 0, 100, 0, (val) => {
+      if (this.callbacks.onSmoothGlobal) {
+        this.callbacks.onSmoothGlobal(val);
+      }
+    }, 1);
+
+    const notifyStart = () => {
+      if (this.callbacks.onSmoothStart) this.callbacks.onSmoothStart();
+    };
+
+    this.smoothnessSlider.addEventListener('mousedown', notifyStart);
+    this.smoothnessSlider.addEventListener('touchstart', notifyStart, { passive: true });
+
+    this.cloudAmountSlider = this._slider(sidebar, 'Cloud Amount', 0, 100, 20, (v) => {
       if (this.callbacks.onCloudAmount) {
         this.callbacks.onCloudAmount(v);
       }

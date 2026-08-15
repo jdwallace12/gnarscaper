@@ -191,6 +191,18 @@ const ui = new UI({
   onReset() { doReset(); },
   onSave(force) { doSaveMap(force); },
   onLoad() { triggerLoadMap(); },
+  onSmoothStart() {
+    history.push(terrain.snapshot());
+    ui.setUndoRedoState(history.canUndo(), history.canRedo());
+    terrain.smoothStart();
+  },
+  onSmoothGlobal(val) {
+    terrain.smoothGlobal(val);
+    water.updateDepthMap();
+    trees.updatePositions(seaLevel);
+    boulders.updatePositions(seaLevel);
+    clouds.updatePositions(seaLevel);
+  },
 });
 
 function generateInitialFoliage() {
@@ -281,11 +293,10 @@ function doReset() {
     ui.seaLevelSlider.nextElementSibling.innerText = '1';
   }
 
-  // Reset snow pack to 50 and sync UI
-  terrain.snowPack = 50;
+  // Reset snow pack to 80 and sync UI
+  terrain.snowPack = 80;
   if (ui.snowPackSlider) {
-    ui.snowPackSlider.value = 50;
-    ui.snowPackSlider.nextElementSibling.innerText = '50';
+    ui.setSnowPackSlider(80);
   }
 
   terrain.reset(seaLevel);
@@ -296,6 +307,7 @@ function doReset() {
   rivers.clear();
   clouds.updatePositions(seaLevel);
   currentFileHandle = null;
+  ui.setSmoothnessSlider(0);
   ui.setUndoRedoState(history.canUndo(), history.canRedo());
 }
 
@@ -515,6 +527,8 @@ function handleInteractStart(e) {
   if (e.type === 'touchstart' && e.touches.length !== 1) return;
 
   if (!brush.intersectionPoint) return;
+
+  ui.setSmoothnessSlider(0);
 
   const tool = TOOLS[currentToolKey];
   if (tool && tool.isCamera) {

@@ -342,6 +342,102 @@ export class Skiers {
          continue;
       }
 
+      if (s.state === 'paraglide_respawn') {
+        const target = s.respawnTarget;
+        if (!target) { s.state = 'skiing'; continue; }
+
+        const dx = target.x - s.wx;
+        const dz = target.z - s.wz;
+        const horizDist = Math.sqrt(dx * dx + dz * dz);
+
+        // Steer toward target
+        const targetHeading = Math.atan2(dx, dz);
+        if (s.glideHeading === undefined) s.glideHeading = targetHeading;
+        let hDiff = targetHeading - s.glideHeading;
+        while (hDiff < -Math.PI) hDiff += Math.PI * 2;
+        while (hDiff > Math.PI) hDiff -= Math.PI * 2;
+        s.glideHeading += hDiff * 2.0 * dt; // Smooth turn toward target
+
+        const glideSpeed = 11.5;
+        s.vx = Math.sin(s.glideHeading) * glideSpeed;
+        s.vz = Math.cos(s.glideHeading) * glideSpeed;
+        s.speed = glideSpeed;
+
+        // Gentle sink rate
+        s.vy = THREE.MathUtils.lerp(s.vy, -2.4, dt * 3.0);
+        s.y += s.vy * dt;
+
+        // Move horizontally
+        s.wx += s.vx * dt;
+        s.wz += s.vz * dt;
+
+        // Check bounds
+        const { gx: rgx, gz: rgz } = this.terrain.worldToGrid(s.wx, s.wz);
+        if (rgx < 1 || rgx >= res - 1 || rgz < 1 || rgz >= res - 1) {
+          s.active = false;
+          s.mesh.visible = false;
+          if (s.chuteGroup) s.chuteGroup.visible = false;
+          continue;
+        }
+
+        let terrainH = this.terrain.getInterpolatedHeight(s.wx, s.wz);
+        if (terrainH <= seaLevel && water) {
+          terrainH = seaLevel + water.getWaveHeight(s.wx, s.wz);
+        }
+
+        // Visual banking
+        s._bankAngle = hDiff * 0.3;
+
+        // Touchdown: close to target OR terrain catches up
+        const landed = s.y <= terrainH;
+        const closeEnough = horizDist < 8.0;
+
+        if (landed || (closeEnough && s.y <= terrainH + 2.0)) {
+          s.y = terrainH;
+          s.vy = 0;
+          s.grounded = true;
+          s.paragliding = false;
+          s._bankAngle = 0;
+          s.state = 'skiing';
+          s.respawnTarget = null;
+
+          // Give a downhill push so they start moving
+          const cellSz = size / (res - 1);
+          const sR = 3;
+          const hL = this.terrain.getHeight(Math.max(0, rgx - sR), rgz);
+          const hR = this.terrain.getHeight(Math.min(res - 1, rgx + sR), rgz);
+          const hU = this.terrain.getHeight(rgx, Math.max(0, rgz - sR));
+          const hD = this.terrain.getHeight(rgx, Math.min(res - 1, rgz + sR));
+          const gX = (hR - hL) / (2 * sR * cellSz);
+          const gZ = (hD - hU) / (2 * sR * cellSz);
+          const gMag = Math.sqrt(gX * gX + gZ * gZ);
+          if (gMag > 0.001) {
+            s.vx = (-gX / gMag) * 4.0;
+            s.vz = (-gZ / gMag) * 4.0;
+          } else {
+            s.vx = 0; s.vz = 0;
+          }
+          s.speed = Math.sqrt(s.vx * s.vx + s.vz * s.vz);
+          s.stuckCount = 0;
+          s.stuckTime = 0;
+        }
+
+        // Update mesh & chute visuals
+        s.mesh.position.set(s.wx, s.y + 0.15, s.wz);
+        if (s.speed > 0.01) {
+          s.mesh.rotation.y = s.glideHeading;
+        }
+        if (s.chuteGroup) {
+          s.chuteGroup.visible = s.paragliding;
+          s.chuteGroup.position.set(s.wx, s.y + 0.15, s.wz);
+          s.chuteGroup.rotation.y = s.mesh.rotation.y;
+          const tgtBank = s._bankAngle || 0;
+          s.chuteGroup.rotation.z = THREE.MathUtils.lerp(s.chuteGroup.rotation.z, tgtBank, 0.1);
+          s.chuteGroup.rotation.x = 0;
+        }
+        continue;
+      }
+
       // --- Skiing State from here on ---
 
       // Get grid position (only for skiing state)
@@ -533,9 +629,9 @@ export class Skiers {
       // Friction: Scrub speed more heavily on steep terrain when going fast
       let currentFriction = friction;
       if (s.speed > 1.2) {
-        currentFriction -= (s.speed - 1.2) * 0.015;
+        currentFriction -= (s.speed - 1.2) * 0.008;
       }
-      currentFriction = Math.max(0.80, currentFriction); // cap max friction
+      currentFriction = Math.max(0.88, currentFriction); // cap max friction — let them rip
 
       s.vx *= currentFriction;
       s.vz *= currentFriction;
@@ -625,8 +721,8 @@ export class Skiers {
         const lookAheadZ = s.wz + normVz * 4.5;
         const lookAheadH = this.terrain.getInterpolatedHeight(lookAheadX, lookAheadZ);
         
-        // Launch off genuine cliff drops
-        if (lookAheadH < terrainH - 8.0) {
+        // Launch off genuine cliff drops (only truly massive drops)
+        if (lookAheadH < terrainH - 15.0) {
           s.grounded = false;
           s.vy = Math.max(s.vy, 5.0); // Pop off cliff edge!
           s.paragliding = true;       // Deploy parachute for cliff flight!
@@ -638,8 +734,8 @@ export class Skiers {
       if (s.grounded) {
         const dh = terrainH - s.y;
         const slopeVy = dh / dt;
-        // Stick to ground down steep slopes (slopeVy up to -45.0) before launching
-        if (slopeVy < -45.0 && s.speed > 15.0) {
+        // Stick to ground down steep slopes (slopeVy up to -80.0) before launching
+        if (slopeVy < -80.0 && s.speed > 25.0) {
           s.grounded = false;
           s.vy = slopeVy;
           s.glideHeading = Math.atan2(s.vx, s.vz);
@@ -651,8 +747,8 @@ export class Skiers {
       } else {
         const heightAboveGround = s.y - terrainH;
 
-        // Deploy parachute when high above ground (> 6.0 units for major cliff drop-offs)
-        if (heightAboveGround > 6.0 && s.vy < 2.0) {
+        // Deploy parachute when high above ground (> 12.0 units for truly massive drops)
+        if (heightAboveGround > 12.0 && s.vy < 2.0) {
           if (!s.paragliding) {
             s.paragliding = true;
             s.glideHeading = Math.atan2(s.vx, s.vz);
@@ -779,8 +875,26 @@ export class Skiers {
 
   /** Remove all skiers and trails */
   _handleStop(s, chairlifts) {
+    // Try parachute respawn to nearby skiable terrain first
+    const respawnTarget = this._findRespawnTarget(s);
+    if (respawnTarget) {
+      s.state = 'paraglide_respawn';
+      s.respawnTarget = respawnTarget;
+      s.grounded = false;
+      s.vy = 8.0; // Launch upward
+      s.paragliding = true;
+      s.glideHeading = Math.atan2(respawnTarget.x - s.wx, respawnTarget.z - s.wz);
+      s.trailPoints = [];
+      s.trailStartIndex = 0;
+      s.trail.geometry.setDrawRange(0, 0);
+      s.stuckCount = 0;
+      s.stuckTime = 0;
+      return;
+    }
+
+    // Fallback: walk to nearest chairlift
     let closestBase = null;
-    let closestDistSq = Infinity; // Find ANY lift on the map
+    let closestDistSq = Infinity;
     let targetLine = null;
 
     if (chairlifts) {
@@ -805,6 +919,70 @@ export class Skiers {
       s.mesh.visible = false;
       if (s.chuteGroup) s.chuteGroup.visible = false;
     }
+  }
+
+  /**
+   * Scan terrain for a nearby snowy slope suitable for landing and skiing.
+   * Returns { x, z } world coords or null if nothing found.
+   */
+  _findRespawnTarget(s) {
+    const res = this.terrain.resolution;
+    const size = this.terrain.size;
+    const half = size / 2;
+    const cellSize = size / (res - 1);
+    const searchRadius = 80.0; // world units
+    const sampleCount = 40;    // random probes
+
+    let bestTarget = null;
+    let bestScore = -Infinity;
+
+    for (let i = 0; i < sampleCount; i++) {
+      // Random point within search radius, biased toward farther distances
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 15.0 + Math.random() * (searchRadius - 15.0); // min 15 away
+      const wx = s.wx + Math.cos(angle) * dist;
+      const wz = s.wz + Math.sin(angle) * dist;
+
+      // Bounds check
+      if (wx < -half + 5 || wx > half - 5 || wz < -half + 5 || wz > half - 5) continue;
+
+      // Snow check
+      const snowCover = this.terrain.getSnowCover(wx, wz);
+      if (snowCover < 0.15) continue;
+
+      // Height & sea level check
+      const h = this.terrain.getInterpolatedHeight(wx, wz);
+      if (h <= (this.terrain.seaLevel || -1)) continue;
+
+      // Slope check — need some gradient so they can ski away
+      const { gx, gz } = this.terrain.worldToGrid(wx, wz);
+      if (gx < 3 || gx >= res - 3 || gz < 3 || gz >= res - 3) continue;
+
+      const sR = 3;
+      const hL = this.terrain.getHeight(gx - sR, gz);
+      const hR = this.terrain.getHeight(gx + sR, gz);
+      const hU = this.terrain.getHeight(gx, gz - sR);
+      const hD = this.terrain.getHeight(gx, gz + sR);
+      const gradX = (hR - hL) / (2 * sR * cellSize);
+      const gradZ = (hD - hU) / (2 * sR * cellSize);
+      const gradMag = Math.sqrt(gradX * gradX + gradZ * gradZ);
+
+      if (gradMag < 0.02) continue; // Too flat to ski
+      if (gradMag > 1.5) continue;  // Too steep / cliff
+
+      // Score: prefer higher elevation (longer runs) + good slope + more snow
+      const elevScore = h * 0.5;
+      const slopeScore = Math.min(gradMag, 0.5) * 20.0;
+      const snowScore = snowCover * 10.0;
+      const score = elevScore + slopeScore + snowScore;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestTarget = { x: wx, z: wz };
+      }
+    }
+
+    return bestTarget;
   }
 
   clear() {
