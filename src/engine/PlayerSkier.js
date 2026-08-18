@@ -53,10 +53,12 @@ export class PlayerSkier {
     this._camPosVec = new THREE.Vector3();
     this._lookAtVec = new THREE.Vector3();
 
-    // Trail
-    this._trailMat = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.9 });
-    this._trail = null;
-    this._trailPoints = [];
+    // Dual Ski Carving Trails (clean crisp powder blue shadow grooves)
+    this._trailMat = new THREE.LineBasicMaterial({ color: 0x6897c4, transparent: true, opacity: 0.88 });
+    this._leftTrail = null;
+    this._rightTrail = null;
+    this._leftTrailPoints = [];
+    this._rightTrailPoints = [];
     this._trailsVisible = true;
 
     // Shared materials
@@ -80,16 +82,16 @@ export class PlayerSkier {
     this._splashPoolSize = 80;
     this._splashTimer = 0;
     
-    // Snow powder particles
+    // Snow powder particles (low translucent powder haze)
     this._snowMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.16,
       roughness: 1.0,
       metalness: 0.0,
     });
     this._snowPool = [];
-    this._snowPoolSize = 150;
+    this._snowPoolSize = 200;
     this._snowTimer = 0;
 
     this._onWater = false;
@@ -155,13 +157,24 @@ export class PlayerSkier {
     const gradZ = (hD - hU) / (2 * sampleR * cellSize);
     this.heading = Math.atan2(-gradX, -gradZ); // face downhill
 
-    // Trail
-    const trailGeo = new THREE.BufferGeometry();
-    const trailPositions = new Float32Array(4000 * 3);
-    trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
-    trailGeo.setDrawRange(0, 0);
-    this._trail = new THREE.Line(trailGeo, this._trailMat);
-    this.group.add(this._trail);
+    // Dual Trails
+    const maxTrailVerts = 4000;
+    const leftGeo = new THREE.BufferGeometry();
+    const leftPositions = new Float32Array(maxTrailVerts * 3);
+    leftGeo.setAttribute('position', new THREE.BufferAttribute(leftPositions, 3));
+    leftGeo.setDrawRange(0, 0);
+    this._leftTrail = new THREE.Line(leftGeo, this._trailMat);
+    this.group.add(this._leftTrail);
+
+    const rightGeo = new THREE.BufferGeometry();
+    const rightPositions = new Float32Array(maxTrailVerts * 3);
+    rightGeo.setAttribute('position', new THREE.BufferAttribute(rightPositions, 3));
+    rightGeo.setDrawRange(0, 0);
+    this._rightTrail = new THREE.Line(rightGeo, this._trailMat);
+    this.group.add(this._rightTrail);
+
+    this._leftTrailPoints = [];
+    this._rightTrailPoints = [];
 
     // Start listening for input
     window.addEventListener('keydown', this._onKeyDown);
@@ -215,12 +228,18 @@ export class PlayerSkier {
       this.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); });
       this.mesh = null;
     }
-    if (this._trail) {
-      this.group.remove(this._trail);
-      this._trail.geometry.dispose();
-      this._trail = null;
+    if (this._leftTrail) {
+      this.group.remove(this._leftTrail);
+      this._leftTrail.geometry.dispose();
+      this._leftTrail = null;
     }
-    this._trailPoints = [];
+    if (this._rightTrail) {
+      this.group.remove(this._rightTrail);
+      this._rightTrail.geometry.dispose();
+      this._rightTrail = null;
+    }
+    this._leftTrailPoints = [];
+    this._rightTrailPoints = [];
 
     // Clean up splash particles
     for (const p of this._splashPool) {
@@ -353,62 +372,78 @@ export class PlayerSkier {
         }
       }
     } else {
-      // Standard Skiing Physics
+      // High-performance Downhill GS Carving Physics
       this.vx -= gradX * gravity * dt;
       this.vz -= gradZ * gravity * dt;
 
-      // Steering logic
-      const maxTurnAccel = 16.0; // Strong edge bite for carving across the slope
-      const turnDamping = 0.94; // Higher damping to prevent spin-outs
-      const maxAngularVel = 2.5; // Cap rotation speed to prevent full spins
+      this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
+
+      // Dynamic steering control: turn rate scales smoothly for sweeping GS arcs
+      const turnAccel = 22.0; // High edge bite
+      const turnDamping = 0.92;
       
+      // Speed-dependent max angular velocity for authentic sweeping GS turns
+      const baseMaxTurn = 2.8;
+      const maxAngularVel = Math.max(1.6, baseMaxTurn - Math.min(this.speed * 0.04, 1.2));
+
       this._steerInput = 0;
-      if (this._keys.left) { this.angularVelocity += maxTurnAccel * dt; this._steerInput = 1; }
-      if (this._keys.right) { this.angularVelocity -= maxTurnAccel * dt; this._steerInput = -1; }
+      if (this._keys.left) { this.angularVelocity += turnAccel * dt; this._steerInput = 1; }
+      if (this._keys.right) { this.angularVelocity -= turnAccel * dt; this._steerInput = -1; }
       
       this.angularVelocity *= turnDamping;
-      // Clamp angular velocity so the skier can't spin around
       this.angularVelocity = Math.max(-maxAngularVel, Math.min(maxAngularVel, this.angularVelocity));
+
+      // Track edge turn transitions for "carve pop" rebound acceleration
+      const prevSteerDir = Math.sign(this._lastAngularVel || 0);
+      const currSteerDir = Math.sign(this.angularVelocity);
+      if (prevSteerDir !== 0 && currSteerDir !== 0 && prevSteerDir !== currSteerDir && this.grounded && isOnSnow) {
+        // Edge switch rebound acceleration
+        const popBoost = Math.min(this.speed * 0.12, 3.0);
+        this.vx += Math.sin(this.heading) * popBoost;
+        this.vz += Math.cos(this.heading) * popBoost;
+      }
+      this._lastAngularVel = this.angularVelocity;
+
       this.heading += this.angularVelocity * dt;
 
       // Downhill alignment: gently rotate heading toward the fall line when not steering.
-      // This prevents the skier from getting stuck sliding sideways on slopes.
-      // Skip on water — there is no fall line on a flat surface.
       if (!this._keys.left && !this._keys.right && !overWater && !this.paragliding) {
         const gradMag = Math.sqrt(gradX * gradX + gradZ * gradZ);
         if (gradMag > 0.01) {
-          // Fall line = steepest downhill direction
           const fallHeading = Math.atan2(-gradX, -gradZ);
           let fallDiff = fallHeading - this.heading;
           while (fallDiff < -Math.PI) fallDiff += Math.PI * 2;
           while (fallDiff > Math.PI) fallDiff -= Math.PI * 2;
-          // Stronger pull on steeper slopes, gentle on flats
-          const alignStrength = Math.min(gradMag * 3.0, 1.5);
+          const alignStrength = Math.min(gradMag * 2.5, 1.2);
           this.heading += fallDiff * alignStrength * dt;
         }
       }
 
-      // Standard push force (W key)
-      if (this._keys.forward && this.grounded) {
-        const pushStrength = isOnSnow ? 1.5 : 1.2;
-        this.vx += Math.sin(this.heading) * pushStrength * dt;
-        this.vz += Math.cos(this.heading) * pushStrength * dt;
-      }
+      // Edge Carving Grip: convert lateral slip into crisp carving velocity along the ski edge angle
+      if (this.speed > 0.1 && this.grounded && !overWater) {
+        const sinH = Math.sin(this.heading);
+        const cosH = Math.cos(this.heading);
 
-      // Steering force: push velocity towards the heading direction
-      this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
-      if (this.speed > 0.1) {
-        const desiredX = Math.sin(this.heading) * this.speed;
-        const desiredZ = Math.cos(this.heading) * this.speed;
-        const steerStrength = Math.max(0.8, 4.0 - (this.speed * 0.05)); // Strong edge grip for cross-slope carving
+        // Forward and lateral components of velocity relative to ski heading
+        const vFwd = this.vx * sinH + this.vz * cosH;
+        const vLat = this.vx * cosH - this.vz * sinH; // perpendicular to heading
+
+        // Edge grip factor: on snow, ski edge cuts deep into slope
+        const edgeGripRate = isOnSnow ? 14.0 : 8.0; 
         
-        this.vx += (desiredX - this.vx) * steerStrength * dt;
-        this.vz += (desiredZ - this.vz) * steerStrength * dt;
+        // Dampen lateral drift (sideslip) while transferring a portion of lateral kinetic energy into forward carve
+        const newVLat = vLat * Math.max(0, 1.0 - edgeGripRate * dt);
+        const latEnergyTransferred = (Math.abs(vLat) - Math.abs(newVLat)) * 0.45;
+        const newVFwd = vFwd + Math.sign(vFwd || 1) * latEnergyTransferred;
+
+        // Reconstruct velocity from carved forward and damped lateral vectors
+        this.vx = newVFwd * sinH + newVLat * cosH;
+        this.vz = newVFwd * cosH - newVLat * sinH;
       }
 
-      // Forward push (ArrowUp)
+      // Forward push & GS Tuck (W or ArrowUp)
       if (this._keys.forward) {
-        const pushForce = (this.grounded && !isOnSnow) ? 12.0 : 15.0; // Slightly weaker push when grounded on grass/dirt/rock
+        const pushForce = (this.grounded && !isOnSnow) ? 10.0 : 15.0;
         this.vx += Math.sin(this.heading) * pushForce * dt;
         this.vz += Math.cos(this.heading) * pushForce * dt;
       }
@@ -423,23 +458,40 @@ export class PlayerSkier {
       this.cameraPitch *= 0.92;
     }
 
-    // Friction & Tucking
+    // Aerodynamic Drag & Speed Cap:
+    // 1 internal speed unit = 5 mph
+    // In full GS tuck stance (pressing W / Forward), top speed is capped at ~95-100 mph (19.0-20.0 internal speed).
+    // In normal upright stance, top speed tops out at ~75-80 mph (15.0-16.0 internal speed).
+    const isTucking = this._keys.lookUp || (this._keys.forward && this.grounded);
+    const maxTopSpeed = isTucking ? 20.0 : 16.0;
+
     let friction = baseFriction;
     if (this._keys.brake) {
-      friction = 0.92; // Harder braking
-    } else if (this._keys.lookUp) {
-      friction = 0.998; // 'W' tucks: less aerodynamic drag
-    } else if (this._keys.forward && this.speed > 1.0) {
-      friction = 0.996; // reduce drag when actively pushing
+      friction = 0.86; // Strong edge check / hockey stop brake
+    } else {
+      // Progressive aerodynamic drag scaling as speed approaches top limit
+      if (this.speed > 8.0) {
+        const speedRatio = Math.min(1.4, this.speed / maxTopSpeed);
+        const dragFactor = 1.0 - (speedRatio * speedRatio * 0.035);
+        friction *= Math.max(0.94, dragFactor);
+      }
     }
 
     if (this.grounded && !overWater && !isOnSnow) {
-      friction = 0.982; // Slightly higher friction on grass/dirt/rock (skis don't glide quite as well)
+      friction *= 0.985; // Slightly higher friction on grass/dirt/rock
     }
 
     this.vx *= friction;
     this.vz *= friction;
     this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
+
+    // Hard top speed clamp (100 mph absolute ceiling in GS tuck)
+    if (this.speed > maxTopSpeed) {
+      const clampRatio = maxTopSpeed / this.speed;
+      this.vx *= clampRatio;
+      this.vz *= clampRatio;
+      this.speed = maxTopSpeed;
+    }
 
     // Move
     this.wx += this.vx * dt;
@@ -452,7 +504,18 @@ export class PlayerSkier {
     const waveOffset = this.water ? this.water.getWaveHeight(this.wx, this.wz) : 0;
     const waveH = this.seaLevel + waveOffset;
     
+    // Deep snow powder sinking calculation
+    if (this.grounded && !overWater && isOnSnow) {
+      const snowCover = this.terrain.getSnowCover(this.wx, this.wz);
+      const maxSink = 0.14; // Skis sink up to 0.14 units into deep powder
+      const sinkTarget = maxSink * Math.min(1.0, Math.max(0, (snowCover - 0.05) / 0.8));
+      this._currentSink = (this._currentSink || 0) * 0.9 + sinkTarget * 0.1;
+    } else {
+      this._currentSink = (this._currentSink || 0) * 0.85;
+    }
+
     const terrainH = Math.max(rawTerrainH2, overWater ? waveH : -Infinity);
+    const effectiveGroundY = terrainH - (this._currentSink || 0);
 
     // Water detection: terrain at or below sea level means we're on water
     // The skier planes over water — use wave surface as the effective ground
@@ -480,8 +543,8 @@ export class PlayerSkier {
       }
       return true;
     } else if (this._onWater && this.speed > 0.3) {
-      // 20 mph sink threshold: speed * 7.5 = mph, so 20 mph ≈ 2.67 internal speed
-      const sinkThreshold = 20 / 7.5;
+      // 20 mph sink threshold: speed * 5.0 = mph, so 20 mph = 4.0 internal speed
+      const sinkThreshold = 20 / 5.0;
       if (this.speed < sinkThreshold) {
         // Too slow to plane — start sinking!
         this._sinking = true;
@@ -512,20 +575,19 @@ export class PlayerSkier {
 
       if (this.grounded && this.speed > 1.0) {
         if (isOnSnow) {
-          // Emit snow powder particles
+          // Emit more continuous translucent powder spray behind ski tails
           this._snowTimer += dt;
-          const emitInterval = Math.max(0.005, 0.05 - this.speed * 0.002); // More particles, emit faster
+          const emitInterval = 0.02; 
           while (this._snowTimer >= emitInterval) {
             this._snowTimer -= emitInterval;
-            // When turning sharply (high angular velocity), kick up much more snow
-            const turnMultiplier = 1 + Math.abs(this.angularVelocity) * 1.5;
-            const count = Math.min(5, Math.floor((this.speed > 5 ? 2 : 1) * turnMultiplier));
+            // Emit 2-3 translucent powder particles per tick
+            const count = (Math.abs(this.angularVelocity) > 0.3 || this.speed > 5.0) ? 3 : 2;
             for (let i = 0; i < count; i++) {
               this._emitSnow(this.wx, terrainH, this.wz);
             }
           }
         } else {
-          this._snowTimer = 0; // On grass or rock, no spray
+          this._snowTimer = 0;
         }
       } else {
         this._snowTimer = 0;
@@ -538,8 +600,7 @@ export class PlayerSkier {
       if (this._keys.jump) {
         this.grounded = false;
         // Launch with significant upward velocity (e.g. an "ollie" or push-off)
-        // We preserve any existing upward momentum from a slope, and add jump force
-        this.vy = Math.max((terrainH - this.y) / dt, 0) + 6.0; 
+        this.vy = Math.max((effectiveGroundY - this.y) / dt, 0) + 6.0; 
         this._keys.jump = false; // Consume the jump press
       } else {
         // Calculate where physics would put us if we went airborne this frame
@@ -547,15 +608,14 @@ export class PlayerSkier {
         const ballisticY = this.y + ballisticVy * dt;
 
         // If the terrain drops out from under our natural trajectory, we catch air!
-        // Require a minimum speed to catch air, otherwise stick to ground.
-        if (terrainH < ballisticY - 0.1 && this.speed > 3.0) {
+        if (effectiveGroundY < ballisticY - 0.1 && this.speed > 3.0) {
           this.grounded = false;
           this.vy = ballisticVy;
           this.y = ballisticY;
         } else {
           // Stick to the ground and calculate our upward/downward velocity
-          this.vy = (terrainH - this.y) / dt;
-          this.y = terrainH;
+          this.vy = (effectiveGroundY - this.y) / dt;
+          this.y = effectiveGroundY;
         }
       }
     } else {
@@ -827,6 +887,31 @@ export class PlayerSkier {
     const targetClimbWeight = this.isClimbing ? 1.0 : 0.0;
     this._climbWeight += (targetClimbWeight - this._climbWeight) * smoothFactor;
 
+    // Ski Edge Roll & Body Leaning
+    const edgeRollTarget = -this.angularVelocity * 0.25;
+    if (this._currentEdgeRoll === undefined) this._currentEdgeRoll = 0;
+    this._currentEdgeRoll += (edgeRollTarget - this._currentEdgeRoll) * smoothFactor;
+    
+    if (this._leftSki && this._rightSki) {
+      this._leftSki.rotation.z = this._currentEdgeRoll;
+      this._rightSki.rotation.z = this._currentEdgeRoll;
+    }
+
+    // GS Tuck Stance & Body Lean
+    const isTucking = this._keys.forward && this.grounded && !this.isClimbing;
+    const tuckWeightTarget = isTucking ? 1.0 : Math.min(this.speed / 12.0, 0.6);
+    if (this._tuckWeight === undefined) this._tuckWeight = 0;
+    this._tuckWeight += (tuckWeightTarget - this._tuckWeight) * smoothFactor;
+
+    if (!this.isClimbing && this._torso) {
+      this._torso.position.y = 0.32 - this._tuckWeight * 0.08;
+      this._torso.rotation.x = this._tuckWeight * 0.35;
+      const counterRot = (this.angularVelocity || 0) * 0.08;
+      this._torso.rotation.y = counterRot;
+      if (this._head) this._head.rotation.y = counterRot;
+      if (this._helmet) this._helmet.rotation.y = counterRot;
+    }
+
     // Visual rotation: Tilt skier based on steering + airtime
     const lean = -this._steerInput * 0.4;
     let targetPitch = (this.cameraPitch || 0) * 0.5 - (this.vy * 0.02);
@@ -877,8 +962,6 @@ export class PlayerSkier {
 
       // Torso & Head Bobbing & Swaying to look alive
       this._torso.position.x = leftVal * 0.01;
-      this._torso.rotation.y = leftVal * 0.05;
-      this._torso.rotation.z = leftVal * 0.03;
       if (this._head) this._head.position.x = leftVal * 0.01;
       if (this._helmet) this._helmet.position.x = leftVal * 0.01;
     }
@@ -899,33 +982,62 @@ export class PlayerSkier {
     this._updateSplashParticles(dt);
     this._updateSnowParticles(dt);
 
-    // Trail
+    // Dual Ski Carve Trails
     if (!this._trailsVisible) {
-      if (this._trail) this._trail.visible = false;
+      if (this._leftTrail) this._leftTrail.visible = false;
+      if (this._rightTrail) this._rightTrail.visible = false;
       return;
     }
-    if (this._trail) this._trail.visible = true;
+    if (this._leftTrail) this._leftTrail.visible = true;
+    if (this._rightTrail) this._rightTrail.visible = true;
 
-    const tp = this._trailPoints;
-    const lastIdx = tp.length - 3;
+    const cosH = Math.cos(this.heading);
+    const sinH = Math.sin(this.heading);
+    const skiOffset = 0.09;
+
+    // Calculate left and right ski track world coordinates
+    const lx = x - cosH * skiOffset;
+    const lz = z + sinH * skiOffset;
+    const rx = x + cosH * skiOffset;
+    const rz = z - sinH * skiOffset;
+    const trackY = y + 0.02;
+
+    const ltp = this._leftTrailPoints;
+    const rtp = this._rightTrailPoints;
+    const maxTrailVerts = 4000;
+
+    const lastLIdx = ltp.length - 3;
     let addPoint = true;
-    if (lastIdx >= 0) {
-      const dx = x - tp[lastIdx];
-      const dz = z - tp[lastIdx + 2];
-      if (dx * dx + dz * dz < 0.09) addPoint = false; // < 0.3 units
+    if (lastLIdx >= 0) {
+      const dx = lx - ltp[lastLIdx];
+      const dz = lz - ltp[lastLIdx + 2];
+      if (dx * dx + dz * dz < 0.09) addPoint = false; // < 0.3 units spacing
     }
-    if (addPoint) {
-      tp.push(x, y + 0.15, z);
-      const maxTrailVerts = 4000;
-      if (tp.length > maxTrailVerts * 3) {
-        this._trailPoints = tp.slice(tp.length - maxTrailVerts * 3);
+
+    if (addPoint && this.grounded && !this._onWater) {
+      ltp.push(lx, trackY, lz);
+      rtp.push(rx, trackY, rz);
+
+      if (ltp.length > maxTrailVerts * 3) {
+        this._leftTrailPoints = ltp.slice(ltp.length - maxTrailVerts * 3);
+        this._rightTrailPoints = rtp.slice(rtp.length - maxTrailVerts * 3);
       }
-      const posAttr = this._trail.geometry.attributes.position;
-      const count = Math.min(this._trailPoints.length, maxTrailVerts * 3);
-      const offset = this._trailPoints.length - count;
-      posAttr.array.set(this._trailPoints.slice(offset, offset + count));
-      posAttr.needsUpdate = true;
-      this._trail.geometry.setDrawRange(0, count / 3);
+
+      if (this._leftTrail && this._rightTrail) {
+        const lPosAttr = this._leftTrail.geometry.attributes.position;
+        const lCount = Math.min(this._leftTrailPoints.length, maxTrailVerts * 3);
+        const lOffset = this._leftTrailPoints.length - lCount;
+        lPosAttr.array.set(this._leftTrailPoints.slice(lOffset, lOffset + lCount));
+        lPosAttr.needsUpdate = true;
+        this._leftTrail.geometry.setDrawRange(0, lCount / 3);
+
+        const rPosAttr = this._rightTrail.geometry.attributes.position;
+        const rCount = Math.min(this._rightTrailPoints.length, maxTrailVerts * 3);
+        const rOffset = this._rightTrailPoints.length - rCount;
+        rPosAttr.array.set(this._rightTrailPoints.slice(rOffset, rOffset + rCount));
+        rPosAttr.needsUpdate = true;
+        this._rightTrail.geometry.setDrawRange(0, rCount / 3);
+      }
     }
   }
 
@@ -1193,8 +1305,8 @@ export class PlayerSkier {
     }
     // Create a new one if pool not full
     if (this._snowPool.length < this._snowPoolSize) {
-      // Use a larger, angular geometry for snow clouds
-      const geo = new THREE.IcosahedronGeometry(0.3, 0);
+      // Small, delicate geometry for realistic low powder spray
+      const geo = new THREE.IcosahedronGeometry(0.12, 0);
       const mesh = new THREE.Mesh(geo, this._snowMat.clone());
       mesh.castShadow = false;
       mesh.receiveShadow = false;
@@ -1210,47 +1322,47 @@ export class PlayerSkier {
     return oldest;
   }
 
-  /** Emit a single snow particle at the given world position */
+  /** Emit a subtle, translucent powder spray particle right behind the ski tails */
   _emitSnow(wx, snowY, wz) {
     const p = this._getSnowParticle();
     
-    // Offset sideways from skier center, wider spread for carving
-    const sideOffset = (Math.random() - 0.5) * 0.8;
-    const fwdOffset = (Math.random() - 0.5) * 0.6;
     const sinH = Math.sin(this.heading);
     const cosH = Math.cos(this.heading);
+
+    // Position particle right behind the tail of the skis, low to ground
+    const sideOffset = (Math.random() - 0.5) * 0.4;
+    const tailDist = 0.3 + Math.random() * 0.3; // behind boots/skis
     
     p.mesh.position.set(
-      wx + cosH * sideOffset + sinH * fwdOffset,
-      snowY + 0.1 + Math.random() * 0.2,
-      wz - sinH * sideOffset + cosH * fwdOffset
+      wx - sinH * tailDist + cosH * sideOffset,
+      snowY + 0.03 + Math.random() * 0.08,
+      wz - cosH * tailDist - sinH * sideOffset
     );
     
-    // Spray outward and upward — based heavily on turn rate
-    const turnInfluence = this.angularVelocity * 0.4; 
-    const speedFactor = Math.min(this.speed * 0.15, 3.0);
-    const spreadAngle = (Math.random() - 0.5) * Math.PI * 0.6;
-    const launchAngle = this.heading + Math.PI + spreadAngle + turnInfluence; // Spray backward and sideways
-    
-    p.vx = Math.sin(launchAngle) * speedFactor * (0.5 + Math.random() * 1.0);
-    p.vy = 0.5 + Math.random() * 2.0 * speedFactor + Math.abs(this.angularVelocity) * 0.8; // High upward spray on turns
-    p.vz = Math.cos(launchAngle) * speedFactor * (0.5 + Math.random() * 1.0);
+    // Low upward float (hugs snow level)
+    p.vy = 0.10 + Math.random() * 0.28 + Math.abs(this.angularVelocity || 0) * 0.35;
+
+    // Backward and slight lateral fan out behind the ski tails
+    const speedFactor = Math.min(this.speed * 0.15, 2.5);
+    const spreadAngle = (Math.random() - 0.5) * Math.PI * 0.7;
+    const launchAngle = this.heading + Math.PI + spreadAngle;
+
+    p.vx = Math.sin(launchAngle) * speedFactor * (0.35 + Math.random() * 0.5);
+    p.vz = Math.cos(launchAngle) * speedFactor * (0.35 + Math.random() * 0.5);
     
     p.life = 0;
-    p.maxLife = 0.6 + Math.random() * 0.5; // 0.6–1.1 seconds (hangs in the air)
+    p.maxLife = 0.32 + Math.random() * 0.28; // 0.32–0.60 seconds for soft floating wake
     
-    // Randomize initial size
-    p.baseScale = 0.3 + Math.random() * 0.7;
+    p.baseScale = 0.18 + Math.random() * 0.25;
     p.mesh.scale.setScalar(p.baseScale);
-    p.mesh.material.opacity = 0.35;
+    p.mesh.material.opacity = 0.16; // Soft, translucent haze
     
-    // Random rotation so they don't all look identical
     p.mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
   }
 
   /** Animate all active snow particles */
   _updateSnowParticles(dt) {
-    const gravity = 3.0; // Very slow fall for light powder
+    const gravity = 1.2; // Very gentle downward settle
     for (const p of this._snowPool) {
       if (!p.active) continue;
       
@@ -1261,35 +1373,30 @@ export class PlayerSkier {
         continue;
       }
       
-      // Air drag (horizontal)
-      p.vx *= 0.95;
-      p.vz *= 0.95;
+      // Horizontal drag
+      p.vx *= 0.93;
+      p.vz *= 0.93;
       
-      // Physics
+      // Physics: soft upward floating that gently settles
       p.vy -= gravity * dt;
       p.mesh.position.x += p.vx * dt;
       p.mesh.position.y += p.vy * dt;
       p.mesh.position.z += p.vz * dt;
       
-      // Slowly rotate
-      p.mesh.rotation.y += 0.5 * dt;
-      p.mesh.rotation.z += 0.5 * dt;
-      
       const terrainH = this.terrain.getInterpolatedHeight(p.mesh.position.x, p.mesh.position.z);
-      // Don't go below ground level
       if (p.mesh.position.y < terrainH) {
         p.mesh.position.y = terrainH;
         p.vy = 0;
-        p.vx *= 0.5;
-        p.vz *= 0.5;
+        p.vx *= 0.4;
+        p.vz *= 0.4;
       }
       
-      // Fade out
+      // Soft translucent fade
       const t = p.life / p.maxLife;
-      p.mesh.material.opacity = 0.35 * (1 - t); // Linear fade
+      p.mesh.material.opacity = 0.16 * (1.0 - t * t);
       
-      // Expand significantly into a large cloud
-      p.mesh.scale.setScalar(p.baseScale * (1.0 + t * 1.5));
+      // Soft scale expansion into translucent haze
+      p.mesh.scale.setScalar(p.baseScale * (1.0 + t * 1.2));
     }
   }
 
@@ -1423,6 +1530,7 @@ export class PlayerSkier {
   }
   setTrailsVisible(visible) {
     this._trailsVisible = visible;
-    if (this._trail) this._trail.visible = this._trailsVisible;
+    if (this._leftTrail) this._leftTrail.visible = this._trailsVisible;
+    if (this._rightTrail) this._rightTrail.visible = this._trailsVisible;
   }
 }

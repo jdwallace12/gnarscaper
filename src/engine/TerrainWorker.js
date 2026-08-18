@@ -10,7 +10,10 @@ const GRASS_HIGH = new THREE.Color(0x2d5a27);
 const ALPINE_MEADOW = new THREE.Color(0x6b7f4a);
 const ROCK = new THREE.Color(0x6b6b6b);
 const ROCK_DARK = new THREE.Color(0x4a4a4a);
-const SNOW = new THREE.Color(0xf0f0f0);
+const SNOW_SUNLIT = new THREE.Color(0xffffff); // Pure radiant brilliant white
+const SNOW_MID = new THREE.Color(0xf5f9fe);    // Bright crisp snow white
+const SNOW_SHADOW = new THREE.Color(0xdce9f5); // Soft clean light powder blue
+const SNOW_DEEP_SHADOW = new THREE.Color(0xb5d2ee); // Crisp alpine sky blue shadow
 const LUSH_GRASS = new THREE.Color(0x2d5a27);
 
 let size = 200;
@@ -23,6 +26,7 @@ let currentSnowPack = 80;
 
 const _tmpBase = new THREE.Color();
 const _tmpResult = new THREE.Color();
+const _tmpSnow = new THREE.Color();
 
 function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0, curvature = 0, grassAmount = 0) {
   const base = _tmpBase;
@@ -87,7 +91,18 @@ function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0, curvature =
   const totalSnow = Math.max(snowAmount, naturalSnow);
 
   if (totalSnow > 0.05) {
-    result.lerpColors(base, SNOW, Math.min(totalSnow, 1.0));
+    // Grand Mountain Adventure style volumetric snow shading:
+    // Blend warm rosy sunlit tops -> soft lavender midtones -> rich periwinkle-violet shadows in couloirs and dips
+    const shadowFactor = Math.min(1.0, Math.max(0, steepness * 0.7 - curvature * 1.8));
+    if (shadowFactor > 0.4) {
+      _tmpSnow.lerpColors(SNOW_SHADOW, SNOW_DEEP_SHADOW, (shadowFactor - 0.4) / 0.6);
+    } else if (shadowFactor > 0.15) {
+      _tmpSnow.lerpColors(SNOW_MID, SNOW_SHADOW, (shadowFactor - 0.15) / 0.25);
+    } else {
+      _tmpSnow.lerpColors(SNOW_SUNLIT, SNOW_MID, shadowFactor / 0.15);
+    }
+
+    result.lerpColors(base, _tmpSnow, Math.min(totalSnow, 1.0));
     return result;
   }
 

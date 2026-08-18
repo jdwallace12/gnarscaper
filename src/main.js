@@ -23,6 +23,7 @@ import { Boulders } from './engine/Boulders.js';
 import { UI } from './ui/UI.js';
 import { Clouds } from './engine/Clouds.js';
 import { PlayerSkier } from './engine/PlayerSkier.js';
+import { SnowGlints } from './engine/SnowGlints.js';
 
 // ---- Boot ----
 (async () => {
@@ -60,6 +61,7 @@ const clouds = new Clouds(terrain);
 const playerSkier = new PlayerSkier(terrain);
 playerSkier.seaLevel = seaLevel;
 playerSkier.water = water;
+const snowGlints = new SnowGlints(terrain, 2500);
 
 scene.add(terrain.mesh);
 scene.add(water.mesh);
@@ -71,6 +73,7 @@ scene.add(rivers.group);
 scene.add(snow.group);
 scene.add(clouds.group);
 scene.add(playerSkier.group);
+scene.add(snowGlints.group);
 clouds.updatePositions(seaLevel);
 
 const brush = new BrushEngine(terrain, scene.camera, canvas);
@@ -745,6 +748,9 @@ function animate() {
   snow.update(dt);
   clouds.update(dt);
   water.update(dt);
+  
+  const glintCenter = (isSkierMode && playerSkier.mesh) ? playerSkier.mesh.position : scene.camera.position;
+  snowGlints.update(dt, glintCenter);
 
   if (isSkierMode) {
     // ...

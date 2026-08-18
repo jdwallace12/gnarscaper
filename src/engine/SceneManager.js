@@ -275,17 +275,17 @@ export class SceneManager {
       fogDensity = 0.0012;
       exposure = 1.2;
     } else if (this.timeOfDay < 18.5) {
-      // Golden Hour (Low warm dramatic sun)
+      // Golden Hour (Low warm dramatic golden sun, rich sky horizon, bright snow fill)
       const t = (this.timeOfDay - 16.5) / 2.0;
-      sunColor = new THREE.Color().lerpColors(new THREE.Color(0xffdfb3), new THREE.Color(0xff9e43), t);
-      sunIntensity = 2.6; // Dramatic warm direct light
-      skyHorizonColor = new THREE.Color().lerpColors(new THREE.Color(0x4a8bb8), new THREE.Color(0xe07a48), t);
-      skyTopColor = new THREE.Color().lerpColors(new THREE.Color(0x0b1a3d), new THREE.Color(0x1a244d), t);
-      hemiSkyColor = new THREE.Color(0x60a5fa);
-      hemiGroundColor = new THREE.Color(0x3d3024);
+      sunColor = new THREE.Color().lerpColors(new THREE.Color(0xffe8c2), new THREE.Color(0xffa852), t);
+      sunIntensity = 2.8; // Rich warm direct sunlight
+      skyHorizonColor = new THREE.Color().lerpColors(new THREE.Color(0x4a8bb8), new THREE.Color(0xe58b54), t);
+      skyTopColor = new THREE.Color().lerpColors(new THREE.Color(0x0b1a3d), new THREE.Color(0x18244d), t);
+      hemiSkyColor = new THREE.Color(0x70a8fa);
+      hemiGroundColor = new THREE.Color(0xc0d8f0); // Bright snow-reflective fill keeping white snow brilliant
       fogColor = skyHorizonColor.clone();
-      fogDensity = 0.0015;
-      exposure = 1.25;
+      fogDensity = 0.0012;
+      exposure = 1.3;
     } else if (this.timeOfDay < 20.5) {
       // Alpenglow / Sunset Dusk
       const t = (this.timeOfDay - 18.5) / 2.0;
