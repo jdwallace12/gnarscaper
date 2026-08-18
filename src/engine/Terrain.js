@@ -11,7 +11,7 @@ export class Terrain {
     this.heightmap = new Float32Array(resolution * resolution);
     this.snowmap = new Float32Array(resolution * resolution);
     this.grassmap = new Float32Array(resolution * resolution);
-    this.snowPack = 80;
+    this.snowPack = 100;
     this.seaLevel = 1;
 
     this.geometry = new THREE.PlaneGeometry(

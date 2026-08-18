@@ -331,7 +331,7 @@ export class UI {
       this.callbacks.onSeaLevel(v);
     }, 0.5);
 
-    this.snowPackSlider = this._slider(sidebar, 'Snow Pack', 0, 100, 80, (v) => {
+    this.snowPackSlider = this._slider(sidebar, 'Snow Pack', 0, 100, 100, (v) => {
       this.callbacks.onSnowPack(v);
     }, 1);
 
