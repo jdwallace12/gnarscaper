@@ -16,6 +16,9 @@ export class Chairlifts {
     this.matTower = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8, metalness: 0.6 }); // Dark grey metal
     this.matCable = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 2 });
     this.matChair = new THREE.MeshStandardMaterial({ color: 0xe63946, roughness: 0.5 }); // Red chairs
+
+    // Chairlift movement speed (world units per second)
+    this.speed = 12.0;
   }
 
   /**
@@ -146,10 +149,10 @@ export class Chairlifts {
   }
 
   update(dt) {
-    const chairSpeedPixelsPerSecond = 3.0; // world units per sec
+    const chairSpeed = this.speed; // world units per sec
 
     for (const line of this.lines) {
-      const progressSpeed = chairSpeedPixelsPerSecond / (line.totalLength * 2);
+      const progressSpeed = chairSpeed / (line.totalLength * 2);
 
       for (const chair of line.chairs) {
         chair.progress += progressSpeed * dt;

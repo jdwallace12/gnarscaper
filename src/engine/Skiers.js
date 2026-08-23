@@ -265,20 +265,32 @@ export class Skiers {
       if (s.state === 'waiting') {
         s.paragliding = false;
         if (s.chuteGroup) s.chuteGroup.visible = false;
-        // Look for an empty chair arriving at the base station (p1 / progress = 0.0)
-        const baseProgress = 0.0;
+        
+        // Determine if targetStation is p1 or p2
+        const isP1Base = (s.targetStation === s.targetLine.p1);
         let bestChair = null;
-        let bestPDiff = 0.08; // Generous window for boarding at base
+        let bestDiff = 0.08;
         
         for (const chair of s.targetLine.chairs) {
            if (chair.passenger) continue;
            
-           let pDiff = Math.abs(chair.progress - baseProgress);
-           if (pDiff > 0.5) pDiff = 1.0 - pDiff;
-           
-           if (pDiff < bestPDiff) {
-              bestPDiff = pDiff;
-              bestChair = chair;
+           if (isP1Base) {
+             // Upward direction from p1 is progress 0.0 -> 0.5
+             if (chair.progress >= 0.0 && chair.progress <= 0.08) {
+               if (chair.progress < bestDiff) {
+                 bestDiff = chair.progress;
+                 bestChair = chair;
+               }
+             }
+           } else {
+             // Upward direction from p2 is progress 0.5 -> 1.0
+             if (chair.progress >= 0.50 && chair.progress <= 0.58) {
+               const diff = chair.progress - 0.50;
+               if (diff < bestDiff) {
+                 bestDiff = diff;
+                 bestChair = chair;
+               }
+             }
            }
         }
         
@@ -304,12 +316,20 @@ export class Skiers {
          s.mesh.rotation.y = chairAngle + Math.PI / 2;
          s.mesh.scale.setScalar(1.0); // Make them larger temporarily!
 
-         const peakProgress = 0.5; // Dismount at top station (p2)
+         const isP1Base = (s.targetStation === s.targetLine.p1);
+         let reachedTop = false;
+
+         if (isP1Base) {
+           if (s.chair.progress >= 0.46 && s.chair.progress <= 0.52) {
+             reachedTop = true;
+           }
+         } else {
+           if (s.chair.progress >= 0.96 || s.chair.progress <= 0.02) {
+             reachedTop = true;
+           }
+         }
          
-         let pDiff = Math.abs(s.chair.progress - peakProgress);
-         if (pDiff > 0.5) pDiff = 1.0 - pDiff;
-         
-         if (pDiff < 0.05) { 
+         if (reachedTop) { 
             s.chair.passenger = null;
             s.chair = null;
             s.state = 'skiing';
@@ -901,7 +921,7 @@ export class Skiers {
 
     if (chairlifts && chairlifts.lines.length > 0) {
       for (const line of chairlifts.lines) {
-        const base = line.p1;
+        const base = line.p1.y < line.p2.y ? line.p1 : line.p2;
         const distSq = (s.wx - base.x) ** 2 + (s.wz - base.z) ** 2;
         if (distSq < closestDistSq) {
           closestDistSq = distSq;

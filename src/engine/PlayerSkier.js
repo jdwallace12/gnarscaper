@@ -750,17 +750,26 @@ export class PlayerSkier {
 
     this._waitingTime += dt;
 
-    // Look for a chair arriving at the base
+    // Look for a chair departing UPWARDS from the base station
     const isP1Base = this.targetStation === this.targetLine.p1;
-    const targetProgress = isP1Base ? 0.0 : 0.5;
 
     for (const chair of this.targetLine.chairs) {
-      const diff = Math.abs(chair.progress - targetProgress);
-      // If chair is close to boarding point and moving towards us
-      if (diff < 0.02) {
-        this.state = 'riding';
-        this.chair = chair;
-        break;
+      if (isP1Base) {
+        // Base is p1: upward direction is progress 0.0 -> 0.5
+        // Board only when chair has turned around at p1 and is departing UPWARDS
+        if (chair.progress >= 0.0 && chair.progress <= 0.06) {
+          this.state = 'riding';
+          this.chair = chair;
+          break;
+        }
+      } else {
+        // Base is p2: upward direction is progress 0.5 -> 1.0
+        // Board only when chair has turned around at p2 and is departing UPWARDS
+        if (chair.progress >= 0.50 && chair.progress <= 0.56) {
+          this.state = 'riding';
+          this.chair = chair;
+          break;
+        }
       }
     }
     return true;
@@ -818,13 +827,23 @@ export class PlayerSkier {
       this._chairLookPitch *= 0.92;
     }
 
-    // Check for dismount
+    // Check for dismount at top station
     const isP1Base = this.targetStation === this.targetLine.p1;
-    const exitProgress = isP1Base ? 0.5 : 0.0;
-    
-    // We check if progress is close to exit point
-    const diff = Math.abs(this.chair.progress - exitProgress);
-    if (diff < 0.01 || (exitProgress === 0.0 && this.chair.progress > 0.99)) {
+    let reachedTop = false;
+
+    if (isP1Base) {
+      // Top station is p2 (progress = 0.5)
+      if (this.chair.progress >= 0.46 && this.chair.progress <= 0.52) {
+        reachedTop = true;
+      }
+    } else {
+      // Top station is p1 (progress = 1.0 / 0.0)
+      if (this.chair.progress >= 0.96 || this.chair.progress <= 0.02) {
+        reachedTop = true;
+      }
+    }
+
+    if (reachedTop) {
        this.state = 'skiing';
        this.chair = null;
        this.targetLine = null;
