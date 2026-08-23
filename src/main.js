@@ -695,7 +695,7 @@ function animate() {
     playerSkier.interpolateVisuals(alpha, dt);
     const cam = playerSkier.getCameraTarget(alpha, dt);
     scene.updateSkierCamera(cam.position, cam.lookAt, dt);
-    ui.updateSkierSpeed(playerSkier.speed, playerSkier.isClimbing);
+    ui.updateSkierSpeed(playerSkier.speed, playerSkier.isClimbing, playerSkier.y);
   } else if (isTourMode) {
     tourTime += dt;
     const cx = 0; 

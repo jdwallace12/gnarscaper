@@ -512,14 +512,23 @@ export class UI {
     this._skierHud.id = 'skier-hud';
     this._skierHud.style.display = 'none';
     this._skierHud.innerHTML = `
-      <div class="skier-hud-speed">
-        <span class="skier-hud-label">SPEED</span>
-        <span class="skier-hud-value" id="skier-speed">0</span>
-        <span class="skier-hud-unit">mph</span>
-      </div>
-      <div class="skier-hud-controls" id="skier-controls">
-        <span><b>←/→</b> Steer · <b>↑</b> Push · <b>↓</b> Brake · <b>W/S</b> Look · <b>Space</b> Jump · <b>X</b> Parachute</span>
-        <span style="opacity:0.6">Press <b>ESC</b> to exit</span>
+      <div class="skier-hud-bar">
+        <div class="skier-hud-stat">
+          <span class="skier-hud-label" id="skier-speed-label">SPEED</span>
+          <span class="skier-hud-value" id="skier-speed">0</span>
+          <span class="skier-hud-unit">mph</span>
+        </div>
+        <div class="skier-hud-divider"></div>
+        <div class="skier-hud-stat">
+          <span class="skier-hud-label">ELEV</span>
+          <span class="skier-hud-subvalue" id="skier-elevation">0</span>
+          <span class="skier-hud-unit">ft</span>
+        </div>
+        <div class="skier-hud-divider skier-hud-main-divider"></div>
+        <div class="skier-hud-controls" id="skier-controls">
+          <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute</span>
+          <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
+        </div>
       </div>
     `;
     document.body.appendChild(this._skierHud);
@@ -793,16 +802,21 @@ export class UI {
     if (actions) actions.classList.toggle('in-ski-mode', show);
   }
 
-  updateSkierSpeed(speed, isClimbing = false) {
+  updateSkierSpeed(speed, isClimbing = false, elevation = 0) {
     const el = document.getElementById('skier-speed');
     if (el) {
       // Convert to mph feel
       el.textContent = Math.round(speed * 5.0);
     }
-    const labelEl = document.querySelector('.skier-hud-label');
+    const labelEl = document.getElementById('skier-speed-label') || document.querySelector('.skier-hud-label');
     if (labelEl) {
       labelEl.textContent = isClimbing ? 'CLIMBING' : 'SPEED';
       labelEl.style.color = isClimbing ? '#ffb703' : ''; // Sleek gold color for climbing!
+    }
+    const elevEl = document.getElementById('skier-elevation');
+    if (elevEl) {
+      const elevFt = Math.max(0, Math.round(elevation * 10));
+      elevEl.textContent = elevFt.toLocaleString();
     }
   }
 
@@ -812,12 +826,12 @@ export class UI {
     if (state === 'riding') {
       el.innerHTML = `
         <span><b>←/→/W/S</b> Look Around · <b>Space</b> Drop Skier</span>
-        <span style="opacity:0.6">Press <b>ESC</b> to exit</span>
+        <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
       `;
     } else {
       el.innerHTML = `
-        <span><b>←/→</b> Steer · <b>↑</b> Push · <b>↓</b> Brake · <b>W/S</b> Look · <b>Space</b> Jump · <b>X</b> Parachute</span>
-        <span style="opacity:0.6">Press <b>ESC</b> to exit</span>
+        <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute</span>
+        <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
       `;
     }
   }

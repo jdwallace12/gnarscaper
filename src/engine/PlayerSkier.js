@@ -26,8 +26,16 @@ export class PlayerSkier {
     this.grounded = true;
 
     // Input state
-    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false, paraglide: false };
+    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false, paraglide: false, grab: false };
     this.paragliding = false;
+
+    // Aerial Trick System State
+    this.airSpinYaw = 0;
+    this.airSpinPitch = 0;
+    this.airGrabName = null;
+    this.airGrabTime = 0;
+    this.airTime = 0;
+    this.onTrick = null;
 
     // Camera pitch (controlled by W/S)
     this.cameraPitch = 0; // radians, positive = look up
@@ -518,80 +526,80 @@ export class PlayerSkier {
     const effectiveGroundY = terrainH - (this._currentSink || 0);
 
     // Water detection: terrain at or below sea level means we're on water
-    // The skier planes over water — use wave surface as the effective ground
     this._onWater = this.grounded && rawTerrainH2 <= this.seaLevel;
 
-    // Once sinking has started, keep it going regardless of speed
-    if (this._sinking && this._onWater) {
-      this._sinkTimer = (this._sinkTimer || 0) + dt;
-      // Gently decelerate
-      this.vx *= 0.98;
-      this.vz *= 0.98;
-      // End the run after 2 seconds
-      if (this._sinkTimer > 2.0) {
-        this.active = false;
-        return false;
-      }
-      // Sink below water — accelerating descent
-      const sinkT = this._sinkTimer / 2.0; // 0→1 over 2 seconds
-      this.y = waveH - (sinkT * sinkT * 1.5);
-      // Splash bubbles while sinking
-      this._splashTimer += dt;
-      if (this._splashTimer >= 0.08) {
-        this._splashTimer -= 0.08;
-        this._emitSplash(this.wx, waveH, this.wz);
-      }
-      return true;
-    } else if (this._onWater && this.speed > 0.3) {
-      // 20 mph sink threshold: speed * 5.0 = mph, so 20 mph = 4.0 internal speed
-      const sinkThreshold = 20 / 5.0;
+    // Water Planing & Slow Sinking Mechanics:
+    // Lowers sink threshold to 8 mph (speed * 5.0 = mph, so 8 mph = 1.6 internal speed)
+    const sinkThreshold = 8.0 / 5.0;
+
+    if (this._onWater && this.grounded) {
       if (this.speed < sinkThreshold) {
-        // Too slow to plane — start sinking!
+        // Slow speed on water — start or continue slow sinking!
         this._sinking = true;
-        this._sinkTimer = 0;
-        return true;
-      }
+        this._sinkTimer = (this._sinkTimer || 0) + dt;
 
-      // Planing on water — light drag
-      const waterDrag = 0.995;
-      this.vx *= waterDrag;
-      this.vz *= waterDrag;
-      this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
+        // Gently decelerate
+        this.vx *= 0.96;
+        this.vz *= 0.96;
+        this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
 
-      // Emit splash particles
-      this._splashTimer += dt;
-      const emitInterval = Math.max(0.01, 0.06 - this.speed * 0.003);
-      while (this._splashTimer >= emitInterval) {
-        this._splashTimer -= emitInterval;
-        const count = this.speed > 5 ? 3 : (this.speed > 2 ? 2 : 1);
-        for (let i = 0; i < count; i++) {
+        // Sink below water surface over 2.5 seconds
+        const sinkT = Math.min(1.0, this._sinkTimer / 2.5); // 0→1 over 2.5s
+        this.y = waveH - (sinkT * sinkT * 1.5);
+
+        // Despawn if submerged after 2.5 seconds
+        if (this._sinkTimer > 2.5) {
+          this.active = false;
+          return false;
+        }
+
+        // Emit splash bubbles while sinking
+        this._splashTimer += dt;
+        if (this._splashTimer >= 0.08) {
+          this._splashTimer -= 0.08;
           this._emitSplash(this.wx, waveH, this.wz);
+        }
+      } else {
+        // Planing on water with full control!
+        this._sinking = false;
+        this._sinkTimer = 0;
+
+        // Light water drag
+        const waterDrag = 0.997;
+        this.vx *= waterDrag;
+        this.vz *= waterDrag;
+        this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
+
+        // Emit water splash particles behind skis
+        this._splashTimer += dt;
+        const emitInterval = Math.max(0.01, 0.06 - this.speed * 0.003);
+        while (this._splashTimer >= emitInterval) {
+          this._splashTimer -= emitInterval;
+          const count = this.speed > 5 ? 3 : (this.speed > 2 ? 2 : 1);
+          for (let i = 0; i < count; i++) {
+            this._emitSplash(this.wx, waveH, this.wz);
+          }
         }
       }
     } else {
       this._splashTimer = 0;
       this._sinking = false;
       this._sinkTimer = 0;
+    }
 
-      if (this.grounded && this.speed > 1.0) {
-        if (isOnSnow) {
-          // Emit more continuous translucent powder spray behind ski tails
-          this._snowTimer += dt;
-          const emitInterval = 0.02; 
-          while (this._snowTimer >= emitInterval) {
-            this._snowTimer -= emitInterval;
-            // Emit 2-3 translucent powder particles per tick
-            const count = (Math.abs(this.angularVelocity) > 0.3 || this.speed > 5.0) ? 3 : 2;
-            for (let i = 0; i < count; i++) {
-              this._emitSnow(this.wx, terrainH, this.wz);
-            }
-          }
-        } else {
-          this._snowTimer = 0;
+    if (this.grounded && this.speed > 1.0 && isOnSnow) {
+      // Emit continuous translucent powder spray behind ski tails on snow
+      this._snowTimer += dt;
+      const emitInterval = 0.02; 
+      while (this._snowTimer >= emitInterval) {
+        this._snowTimer -= emitInterval;
+        const count = (Math.abs(this.angularVelocity) > 0.3 || this.speed > 5.0) ? 3 : 2;
+        for (let i = 0; i < count; i++) {
+          this._emitSnow(this.wx, terrainH, this.wz);
         }
-      } else {
-        this._snowTimer = 0;
       }
+    } else {
+      this._snowTimer = 0;
     }
 
     if (this.grounded) {
@@ -696,8 +704,36 @@ export class PlayerSkier {
         }
         
       } else {
-        // Normal falling physics
+        // Normal falling physics & Aerial Tricks
         this.vy -= gravity * dt;
+
+        this.airTime = (this.airTime || 0) + dt;
+
+        // Spins (Yaw: 360 / 720 / 1080)
+        const spinSpeed = 7.5; // rad/sec (~430 deg/sec)
+        if (this._keys.left)  this.airSpinYaw = (this.airSpinYaw || 0) + spinSpeed * dt;
+        if (this._keys.right) this.airSpinYaw = (this.airSpinYaw || 0) - spinSpeed * dt;
+
+        // Flips (Pitch: Backflip / Frontflip)
+        const flipSpeed = 6.2; // rad/sec (~355 deg/sec)
+        if (this._keys.forward || this._keys.lookUp)   this.airSpinPitch = (this.airSpinPitch || 0) + flipSpeed * dt;
+        if (this._keys.brake || this._keys.lookDown)   this.airSpinPitch = (this.airSpinPitch || 0) - flipSpeed * dt;
+
+        // Air Grabs
+        if (this._keys.grab) {
+          if (this._keys.left) {
+            this.airGrabName = 'MUTE';
+          } else if (this._keys.right) {
+            this.airGrabName = 'SAFETY';
+          } else if (this._keys.forward || this._keys.lookUp) {
+            this.airGrabName = 'TAIL';
+          } else if (this._keys.brake || this._keys.lookDown) {
+            this.airGrabName = 'JAPAN';
+          } else {
+            this.airGrabName = 'METHOD';
+          }
+          this.airGrabTime = (this.airGrabTime || 0) + dt;
+        }
       }
 
       this.y += this.vy * dt;
@@ -707,9 +743,17 @@ export class PlayerSkier {
         const impactSpeed = -this.vy; // downward vertical impact velocity
         this.y = terrainH;
         this.vy = 0;
+
         this.grounded = true;
         this.paragliding = false;
-        
+
+        // Reset air trick state
+        this.airSpinYaw = 0;
+        this.airSpinPitch = 0;
+        this.airGrabName = null;
+        this.airGrabTime = 0;
+        this.airTime = 0;
+
         if (impactSpeed > 0.5) {
           // Snow and knees absorb vertical landing force
           this._kneeCompression = Math.min(0.28, (impactSpeed * 0.015) + (this._kneeCompression || 0));
@@ -959,14 +1003,65 @@ export class PlayerSkier {
       if (this._helmet) this._helmet.rotation.y = counterRot;
     }
 
-    // Visual rotation: Tilt skier based on steering + airtime
+    // Visual rotation: Tilt skier based on steering + airtime tricks
     const lean = -this._steerInput * 0.4;
     let targetPitch = (this.cameraPitch || 0) * 0.5 - (this.vy * 0.02);
     if (this.isClimbing) {
       targetPitch += 0.4 * this._climbWeight; // Lean forward into the slope
     }
-    this.mesh.rotation.z = lean;
-    this.mesh.rotation.x = targetPitch;
+
+    if (!this.grounded && !this.paragliding) {
+      this.mesh.rotation.y = this.heading + (this.airSpinYaw || 0);
+      this.mesh.rotation.x = targetPitch + (this.airSpinPitch || 0);
+      this.mesh.rotation.z = lean;
+
+      // Grab Visual Posing
+      if (this.airGrabName) {
+        if (this._leftSki && this._rightSki) {
+          this._leftSki.rotation.y = 0.35;
+          this._rightSki.rotation.y = -0.35;
+        }
+        if (this._leftLeg && this._rightLeg) {
+          this._leftLeg.rotation.x = -0.50;
+          this._rightLeg.rotation.x = -0.50;
+        }
+        if (this._leftArm && this._rightArm) {
+          this._leftArm.rotation.x = 0.90;
+          this._rightArm.rotation.x = 0.90;
+        }
+        if (this._torso) {
+          this._torso.rotation.x = 0.50;
+        }
+      } else {
+        if (this._leftSki && this._rightSki) {
+          this._leftSki.rotation.y = 0;
+          this._rightSki.rotation.y = 0;
+        }
+        if (this._leftLeg && this._rightLeg) {
+          this._leftLeg.rotation.x = 0;
+          this._rightLeg.rotation.x = 0;
+        }
+        if (this._leftArm && this._rightArm) {
+          this._leftArm.rotation.x = 0;
+          this._rightArm.rotation.x = 0;
+        }
+      }
+    } else {
+      this.mesh.rotation.z = lean;
+      this.mesh.rotation.x = targetPitch;
+      if (this._leftSki && this._rightSki) {
+        this._leftSki.rotation.y = 0;
+        this._rightSki.rotation.y = 0;
+      }
+      if (this._leftLeg && this._rightLeg) {
+        this._leftLeg.rotation.x = 0;
+        this._rightLeg.rotation.x = 0;
+      }
+      if (this._leftArm && this._rightArm) {
+        this._leftArm.rotation.x = 0;
+        this._rightArm.rotation.x = 0;
+      }
+    }
 
     // Cross-country/skinning glide stride animation on individual mesh parts
     if (this._leftSki && this._rightSki && this._leftLeg && this._rightLeg && this._leftPole && this._rightPole && this._torso) {
@@ -1124,24 +1219,22 @@ export class PlayerSkier {
     if (!isFinite(this._smoothTravelX)) this._smoothTravelX = 0;
     if (!isFinite(this._smoothTravelZ)) this._smoothTravelZ = 0;
 
-    // Update camera heading based on smoothed travel direction
+    // Update camera heading based on smoothed travel direction or skier heading
     const travelMag = Math.sqrt(this._smoothTravelX * this._smoothTravelX + this._smoothTravelZ * this._smoothTravelZ);
-    if (travelMag > 0.0005) {
-      const travelHeading = Math.atan2(this._smoothTravelX, this._smoothTravelZ);
-      let diff = travelHeading - this.cameraHeading;
-      if (isFinite(diff)) {
-        while (diff < -Math.PI) diff += Math.PI * 2;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        // Time constant ~2.5s — very cinematic, lazy camera that never snaps during turns
-        const headingSmooth = 1 - Math.pow(0.01, frameDt);
-        this.cameraHeading += diff * headingSmooth;
-      }
+    const targetHeading = (travelMag > 0.0005) ? Math.atan2(this._smoothTravelX, this._smoothTravelZ) : this.heading;
+    let diff = targetHeading - this.cameraHeading;
+    if (isFinite(diff)) {
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      // Responsive camera tracking so camera stays tightly locked behind skier over water and land
+      const headingSmooth = 1 - Math.pow(0.0001, frameDt);
+      this.cameraHeading += diff * headingSmooth;
     }
 
-    // Base camera parameters
-    const targetCamDist = 12;
+    // Base camera parameters (higher downward angle to frame skier prominently)
+    const targetCamDist = 10.5;
     const pitchForCam = this.state === 'riding' ? this._chairLookPitch : this.cameraPitch;
-    const targetCamHeight = 6.5 + pitchForCam * 5; 
+    const targetCamHeight = 9.5 + pitchForCam * 5; 
 
     // Camera Collision & Obstruction Avoidance
     // We check the terrain height at the camera position and midway to the skier.
@@ -1183,13 +1276,17 @@ export class PlayerSkier {
     let camY = h + targetCamHeight + this._currentCamHeightBonus;
 
     const terrainHAtCamFinal = this.terrain.getInterpolatedHeight(camX, camZ);
+    const waveOffsetCam = this.water ? this.water.getWaveHeight(camX, camZ) : 0;
+    const waveHCam = (this.seaLevel !== undefined ? this.seaLevel : 0) + waveOffsetCam;
+    const isCamOverWater = isFinite(terrainHAtCamFinal) && terrainHAtCamFinal <= this.seaLevel;
+    const surfaceHAtCam = isCamOverWater ? waveHCam : (isFinite(terrainHAtCamFinal) ? terrainHAtCamFinal : -Infinity);
     const minHeightAboveGround = 2.5;
-    if (isFinite(terrainHAtCamFinal) && camY < terrainHAtCamFinal + minHeightAboveGround) {
-      camY = terrainHAtCamFinal + minHeightAboveGround;
+    if (isFinite(surfaceHAtCam) && camY < surfaceHAtCam + minHeightAboveGround) {
+      camY = surfaceHAtCam + minHeightAboveGround;
     }
 
     // NaN guard on camY
-    if (!isFinite(camY)) camY = h + camHeight;
+    if (!isFinite(camY)) camY = h + targetCamHeight;
 
     // Frame-rate independent vertical smoothing — time constant ~1.8s prevents Y-axis jumpiness
     if (this._smoothCamY === undefined || !isFinite(this._smoothCamY)) this._smoothCamY = camY;
@@ -1197,8 +1294,8 @@ export class PlayerSkier {
     this._smoothCamY += (camY - this._smoothCamY) * ySmooth;
     if (!isFinite(this._smoothCamY)) this._smoothCamY = camY;
 
-    // Also smooth the lookAt Y to prevent vertical jitter in the focus point
-    const lookY = h + 1.5 + pitchForCam * 8;
+    // Aim focus point right at the skier's body/skis for a clear downward view
+    const lookY = h + 0.4 + pitchForCam * 6;
     if (this._smoothLookY === undefined || !isFinite(this._smoothLookY)) this._smoothLookY = lookY;
     const lookYSmooth = 1 - Math.pow(0.005, frameDt);
     this._smoothLookY += (lookY - this._smoothLookY) * lookYSmooth;
@@ -1213,12 +1310,11 @@ export class PlayerSkier {
   _onKeyDown(e) {
     if (e.target.tagName && e.target.tagName.toLowerCase() === 'input') return;
     switch (e.key) {
-      case 'ArrowLeft':    e.preventDefault(); this._keys.left = true; break;
-      case 'ArrowRight':   e.preventDefault(); this._keys.right = true; break;
-      case 'ArrowUp':      e.preventDefault(); this._keys.forward = true; break;
-      case 'ArrowDown':    e.preventDefault(); this._keys.brake = true; break;
-      case 'w': case 'W':  this._keys.lookUp = true; break;
-      case 's': case 'S':  this._keys.lookDown = true; break;
+      case 'ArrowLeft':  case 'a': case 'A': e.preventDefault(); this._keys.left = true; break;
+      case 'ArrowRight': case 'd': case 'D': e.preventDefault(); this._keys.right = true; break;
+      case 'ArrowUp':    case 'w': case 'W': e.preventDefault(); this._keys.forward = true; this._keys.lookUp = true; break;
+      case 'ArrowDown':  case 's': case 'S': e.preventDefault(); this._keys.brake = true; this._keys.lookDown = true; break;
+      case 'Shift':      case 'z': case 'Z': case 'c': case 'C': e.preventDefault(); this._keys.grab = true; break;
       case 'x': case 'X':  this._keys.paraglide = true; break;
       case ' ':            e.preventDefault(); this._keys.jump = true; break;
     }
@@ -1226,12 +1322,11 @@ export class PlayerSkier {
 
   _onKeyUp(e) {
     switch (e.key) {
-      case 'ArrowLeft':    this._keys.left = false; break;
-      case 'ArrowRight':   this._keys.right = false; break;
-      case 'ArrowUp':      this._keys.forward = false; break;
-      case 'ArrowDown':    this._keys.brake = false; break;
-      case 'w': case 'W':  this._keys.lookUp = false; break;
-      case 's': case 'S':  this._keys.lookDown = false; break;
+      case 'ArrowLeft':  case 'a': case 'A': this._keys.left = false; break;
+      case 'ArrowRight': case 'd': case 'D': this._keys.right = false; break;
+      case 'ArrowUp':    case 'w': case 'W': this._keys.forward = false; this._keys.lookUp = false; break;
+      case 'ArrowDown':  case 's': case 'S': this._keys.brake = false; this._keys.lookDown = false; break;
+      case 'Shift':      case 'z': case 'Z': case 'c': case 'C': this._keys.grab = false; break;
       case 'x': case 'X':  this._keys.paraglide = false; break;
       case ' ':            this._keys.jump = false; break;
     }

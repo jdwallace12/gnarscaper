@@ -479,13 +479,11 @@ input[type="range"]::-moz-range-thumb {
 /* ---- Skier HUD Overlay ---- */
 #skier-hud {
   position: fixed;
-  bottom: 32px;
+  bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 12px;
   z-index: 200;
   pointer-events: none;
   animation: hudFadeIn 0.4s ease forwards;
@@ -496,16 +494,35 @@ input[type="range"]::-moz-range-thumb {
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
-.skier-hud-speed {
+.skier-hud-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: 8px 22px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+}
+
+.skier-hud-stat {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  padding: 14px 28px;
+}
+
+.skier-hud-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.skier-hud-main-divider {
+  height: 28px;
+  background: rgba(255, 255, 255, 0.25);
+  margin: 0 4px;
 }
 
 .skier-hud-label {
@@ -517,12 +534,22 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .skier-hud-value {
-  font-size: 2.2rem;
+  font-size: 2.0rem;
   font-weight: 800;
   color: #64b5f6;
   letter-spacing: -0.02em;
-  text-shadow: 0 0 20px rgba(100, 181, 246, 0.5);
-  min-width: 60px;
+  text-shadow: 0 0 18px rgba(100, 181, 246, 0.5);
+  min-width: 44px;
+  text-align: center;
+}
+
+/* Secondary Subordinate Metric: Elevation with less visual weight */
+.skier-hud-subvalue {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+  letter-spacing: -0.01em;
+  min-width: 36px;
   text-align: center;
 }
 
@@ -534,17 +561,11 @@ input[type="range"]::-moz-range-thumb {
 
 .skier-hud-controls {
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 4px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  padding: 8px 20px;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   color: var(--text-dim);
+  white-space: nowrap;
 }
 
 .skier-hud-controls b {
@@ -823,17 +844,23 @@ input[type="range"]::-moz-range-thumb {
 
   /* HUD: Minimalist for small screens */
   #skier-hud {
-    bottom: 32px; /* Move to bottom instead of floating above the hidden bottom sheet */
+    bottom: 24px;
   }
 
-  .skier-hud-speed {
-    padding: 8px 20px;
-    border-radius: 12px;
+  .skier-hud-bar {
+    padding: 6px 14px;
+    border-radius: 14px;
+    gap: 8px;
   }
 
   .skier-hud-value {
-    font-size: 1.6rem;
-    min-width: 45px;
+    font-size: 1.4rem;
+    min-width: 32px;
+  }
+
+  .skier-hud-subvalue {
+    font-size: 0.9rem;
+    min-width: 28px;
   }
 
   .skier-hud-controls {
