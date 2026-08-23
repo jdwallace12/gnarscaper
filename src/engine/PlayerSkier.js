@@ -599,22 +599,25 @@ export class PlayerSkier {
       // Manual Jump
       if (this._keys.jump) {
         this.grounded = false;
-        // Launch with significant upward velocity (e.g. an "ollie" or push-off)
-        this.vy = Math.max((effectiveGroundY - this.y) / dt, 0) + 6.0; 
+        // Launch with upward velocity for an intentional jump
+        const slopeVy = Math.max((effectiveGroundY - this.y) / dt, 0);
+        this.vy = slopeVy + 6.0; 
         this._keys.jump = false; // Consume the jump press
       } else {
         // Calculate where physics would put us if we went airborne this frame
         const ballisticVy = this.vy - gravity * dt;
         const ballisticY = this.y + ballisticVy * dt;
 
-        // If the terrain drops out from under our natural trajectory, we catch air!
-        if (effectiveGroundY < ballisticY - 0.1 && this.speed > 3.0) {
+        // Skier only catches air over significant terrain drop-offs/cliffs or steep crests (prevents micro-bouncing)
+        const terrainDrop = ballisticY - effectiveGroundY;
+        if (terrainDrop > 0.65 && this.speed > 6.0) {
           this.grounded = false;
           this.vy = ballisticVy;
           this.y = ballisticY;
         } else {
-          // Stick to the ground and calculate our upward/downward velocity
-          this.vy = (effectiveGroundY - this.y) / dt;
+          // Stick to the ground smoothly — snow suspension dampens sharp upward slope acceleration
+          const targetVy = (effectiveGroundY - this.y) / dt;
+          this.vy = THREE.MathUtils.lerp(this.vy, Math.min(targetVy, 6.0), 0.35);
           this.y = effectiveGroundY;
         }
       }
@@ -699,15 +702,33 @@ export class PlayerSkier {
 
       this.y += this.vy * dt;
 
-      // Landing check
+      // Landing check with snow force absorption & knee compression
       if (this.y <= terrainH) {
+        const impactSpeed = -this.vy; // downward vertical impact velocity
         this.y = terrainH;
         this.vy = 0;
         this.grounded = true;
         this.paragliding = false;
         
-        // Optional: on hard landings we could bleed some forward speed
-        // this.vx *= 0.95; this.vz *= 0.95;
+        if (impactSpeed > 0.5) {
+          // Snow and knees absorb vertical landing force
+          this._kneeCompression = Math.min(0.28, (impactSpeed * 0.015) + (this._kneeCompression || 0));
+          
+          if (isOnSnow) {
+            // Soft powder spray burst proportional to impact force
+            const sprayCount = Math.min(12, Math.floor(impactSpeed * 0.5));
+            for (let i = 0; i < sprayCount; i++) {
+              this._emitSnow(this.wx, terrainH, this.wz);
+            }
+            // Snow absorbs kinetic shock on heavy landings
+            if (impactSpeed > 5.0) {
+              const absorbRatio = Math.max(0.82, 1.0 - (impactSpeed - 5.0) * 0.012);
+              this.vx *= absorbRatio;
+              this.vz *= absorbRatio;
+              this.speed *= absorbRatio;
+            }
+          }
+        }
       }
     }
 
@@ -884,7 +905,13 @@ export class PlayerSkier {
     
     if (!isFinite(x) || !isFinite(y) || !isFinite(z)) return;
 
-    this.mesh.position.set(x, y + 0.15, z);
+    // Smoothly decay knee compression force over time
+    if (this._kneeCompression > 0) {
+      this._kneeCompression *= Math.pow(0.01, dt);
+      if (this._kneeCompression < 0.001) this._kneeCompression = 0;
+    }
+
+    this.mesh.position.set(x, y + 0.15 - (this._kneeCompression || 0) * 0.5, z);
 
     // Frame-rate independent exponential tracking (~99.9% convergence per sec)
     const smoothFactor = 1 - Math.pow(0.0001, dt);
@@ -923,7 +950,8 @@ export class PlayerSkier {
     this._tuckWeight += (tuckWeightTarget - this._tuckWeight) * smoothFactor;
 
     if (!this.isClimbing && this._torso) {
-      this._torso.position.y = 0.32 - this._tuckWeight * 0.08;
+      const compressionOffset = this._kneeCompression || 0;
+      this._torso.position.y = (0.32 - this._tuckWeight * 0.08) - compressionOffset;
       this._torso.rotation.x = this._tuckWeight * 0.35;
       const counterRot = (this.angularVelocity || 0) * 0.08;
       this._torso.rotation.y = counterRot;
