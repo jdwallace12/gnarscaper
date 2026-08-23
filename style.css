@@ -549,8 +549,9 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 600;
   color: rgba(255, 255, 255, 0.78);
   letter-spacing: -0.01em;
-  min-width: 36px;
+  min-width: 55px;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .skier-hud-unit {
