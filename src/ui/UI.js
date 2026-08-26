@@ -656,8 +656,7 @@ export class UI {
           <div class="tip-modal-badge">☕ Support GnarScaper</div>
           <h2 class="tip-modal-title">Enjoying the Gnar?</h2>
           <p class="tip-modal-subtitle">
-            GnarScaper is a free, passion-driven 3D terrain builder & ski simulator.
-            Your support helps power new features, ski physics, chairlifts & performance updates!
+            Hope you are enjoying GnarScaper as much as I enjoyed making it! Your support helps fund future features and improvements.
           </p>
         </div>
 
@@ -665,24 +664,24 @@ export class UI {
           <div class="tip-section-label">Select a Tip Amount</div>
           <div class="tip-tiers-grid">
             <button class="tip-tier-card" data-amount="3">
-              <span class="tip-tier-emoji">☕</span>
+              <span class="tip-tier-emoji">🟢</span>
               <span class="tip-tier-price">$3</span>
-              <span class="tip-tier-title">Buy a Coffee</span>
+              <span class="tip-tier-title">Green Circle</span>
             </button>
             <button class="tip-tier-card active" data-amount="5">
-              <span class="tip-tier-emoji">🍫</span>
+              <span class="tip-tier-emoji">🟦</span>
               <span class="tip-tier-price">$5</span>
-              <span class="tip-tier-title">Hot Cocoa</span>
+              <span class="tip-tier-title">Blue Square</span>
             </button>
             <button class="tip-tier-card" data-amount="10">
-              <span class="tip-tier-emoji">🎿</span>
+              <span class="tip-tier-emoji" style="transform: rotate(45deg); transform-origin: center center;">⬛</span>
               <span class="tip-tier-price">$10</span>
-              <span class="tip-tier-title">Lift Ticket</span>
+              <span class="tip-tier-title">Black Diamond</span>
             </button>
             <button class="tip-tier-card" data-amount="25">
-              <span class="tip-tier-emoji">🏔️</span>
+              <span style="display:flex;flex-direction:row;"><span class="tip-tier-emoji" style="transform: rotate(45deg); transform-origin: center center;">⬛</span><span class="tip-tier-emoji" style="transform: rotate(45deg); translateX:5px; transform-origin: center center; translate: 2px;">⬛</span></span>
               <span class="tip-tier-price">$25</span>
-              <span class="tip-tier-title">Powder Pass</span>
+              <span class="tip-tier-title">Double Black Diamond</span>
             </button>
           </div>
         </div>
@@ -690,17 +689,11 @@ export class UI {
         <div class="tip-platforms-section">
           <div class="tip-section-label">Choose Payment Platform</div>
           <div class="tip-platforms-grid">
-            <a href="https://buymeacoffee.com" target="_blank" rel="noopener noreferrer" class="tip-platform-btn bmac">
-              <span class="platform-icon">☕</span> Buy Me a Coffee
-            </a>
-            <a href="https://ko-fi.com" target="_blank" rel="noopener noreferrer" class="tip-platform-btn kofi">
-              <span class="platform-icon">❤️</span> Ko-fi
-            </a>
             <a href="https://paypal.me" target="_blank" rel="noopener noreferrer" class="tip-platform-btn paypal">
               <span class="platform-icon">🅿️</span> PayPal
             </a>
-            <a href="https://github.com/sponsors" target="_blank" rel="noopener noreferrer" class="tip-platform-btn github">
-              <span class="platform-icon">💖</span> GitHub Sponsors
+            <a href="https://venmo.com" target="_blank" rel="noopener noreferrer" class="tip-platform-btn venmo">
+              <span class="platform-icon">📲</span> Venmo
             </a>
           </div>
         </div>

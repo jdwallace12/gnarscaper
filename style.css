@@ -1206,28 +1206,6 @@ input[type="range"]::-moz-range-thumb {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.tip-platform-btn.bmac {
-  background: linear-gradient(135deg, rgba(255, 221, 0, 0.2), rgba(255, 153, 0, 0.2));
-  border-color: rgba(255, 221, 0, 0.4);
-  color: #ffe033;
-}
-.tip-platform-btn.bmac:hover {
-  background: linear-gradient(135deg, #ffdd00, #ff9900);
-  color: #000000;
-  box-shadow: 0 4px 15px rgba(255, 221, 0, 0.4);
-}
-
-.tip-platform-btn.kofi {
-  background: rgba(255, 94, 91, 0.15);
-  border-color: rgba(255, 94, 91, 0.4);
-  color: #ff5e5b;
-}
-.tip-platform-btn.kofi:hover {
-  background: #ff5e5b;
-  color: #ffffff;
-  box-shadow: 0 4px 15px rgba(255, 94, 91, 0.4);
-}
-
 .tip-platform-btn.paypal {
   background: rgba(0, 112, 186, 0.2);
   border-color: rgba(0, 112, 186, 0.4);
@@ -1239,15 +1217,15 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: 0 4px 15px rgba(0, 112, 186, 0.4);
 }
 
-.tip-platform-btn.github {
-  background: rgba(234, 76, 137, 0.15);
-  border-color: rgba(234, 76, 137, 0.4);
-  color: #f472b6;
+.tip-platform-btn.venmo {
+  background: rgba(0, 140, 255, 0.2);
+  border-color: rgba(0, 140, 255, 0.4);
+  color: #60a5fa;
 }
-.tip-platform-btn.github:hover {
-  background: #ea4c89;
+.tip-platform-btn.venmo:hover {
+  background: #008cff;
   color: #ffffff;
-  box-shadow: 0 4px 15px rgba(234, 76, 137, 0.4);
+  box-shadow: 0 4px 15px rgba(0, 140, 255, 0.4);
 }
 
 /* Modal Footer & Copy Link */
