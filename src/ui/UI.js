@@ -678,9 +678,9 @@ export class UI {
               <span class="tip-tier-price">$10</span>
               <span class="tip-tier-title">Black Diamond</span>
             </button>
-            <button class="tip-tier-card" data-amount="20">
+            <button class="tip-tier-card" data-amount="15">
               <span style="display:flex;flex-direction:row;"><span class="tip-tier-emoji" style="transform: rotate(45deg); transform-origin: center center;">⬛</span><span class="tip-tier-emoji" style="transform: rotate(45deg); translateX:5px; transform-origin: center center; translate: 2px;">⬛</span></span>
-              <span class="tip-tier-price">$20</span>
+              <span class="tip-tier-price">$15</span>
               <span class="tip-tier-title">Double Black Diamond</span>
             </button>
           </div>
