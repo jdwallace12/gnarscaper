@@ -648,40 +648,42 @@ export class PlayerSkier {
       }
 
       if (this.paragliding) {
-        // Paraglider Physics
-        const chuteGravity = 0.75;
+        // Paraglider Physics — low sink rate for long distance map traversal
+        const chuteGravity = 0.30;
         this.vy -= chuteGravity * dt;
         
-        // Aerodynamic drag on vertical fall (terminal velocity)
-        if (this.vy < -3.0) {
-          this.vy += (this.vy * -0.8) * dt; 
+        // Terminal descent speed check
+        if (this.vy < -2.0) {
+          this.vy += (this.vy * -1.2) * dt; 
         }
 
-        // Steer while flying
-        const airTurnSpeed = 3.0;
+        // Steer while flying (responsive turning)
+        const airTurnSpeed = 3.5;
         if (this._keys.left) { this.heading += airTurnSpeed * dt; this._steerInput = 1; }
         if (this._keys.right) { this.heading -= airTurnSpeed * dt; this._steerInput = -1; }
         
-        // Push forward / Fly around
-        if (this._keys.forward) {
-          const flyThrust = 20.0;
+        // Base forward glide cruise (always glides forward while parachute is open!)
+        const baseCruiseThrust = 25.0;
+        this.vx += Math.sin(this.heading) * baseCruiseThrust * dt;
+        this.vz += Math.cos(this.heading) * baseCruiseThrust * dt;
+
+        // Boosted Forward Flight & Thermal Lift (holding W or Forward key)
+        if (this._keys.forward || this._keys.lookUp) {
+          const flyThrust = 45.0;
           this.vx += Math.sin(this.heading) * flyThrust * dt;
           this.vz += Math.cos(this.heading) * flyThrust * dt;
-          // Add a bit of upward lift when actively flying forward
-          this.vy += 1.2 * dt;
+          // Thermal lift to maintain or gain altitude while flying forward
+          this.vy += 2.8 * dt;
         }
 
         // Ridge Lift: gain elevation when flying towards rising terrain
-        // gradX/gradZ are downhill directions, so -gradX/-gradZ is uphill
         const uphillFlow = -(this.vx * gradX + this.vz * gradZ);
         if (uphillFlow > 0) {
           const heightAboveGround = this.y - terrainH;
-          const maxLiftHeight = 15.0;
+          const maxLiftHeight = 25.0;
           if (heightAboveGround < maxLiftHeight) {
-            // Stronger lift when closer to the slope
             const liftEffect = (1.0 - heightAboveGround / maxLiftHeight);
-            const rawTargetLift = uphillFlow * 0.8 * liftEffect;
-            // Smoothly apply lift to prevent jitter on noisy terrain
+            const rawTargetLift = uphillFlow * 1.2 * liftEffect;
             this._smoothLift = (this._smoothLift || 0) * 0.9 + rawTargetLift * 0.1;
             this.vy += this._smoothLift * dt;
           }
@@ -690,19 +692,18 @@ export class PlayerSkier {
         }
 
         // Glide friction
-        this.vx *= 0.99;
-        this.vz *= 0.99;
+        const airFriction = 0.985;
+        this.vx *= airFriction;
+        this.vz *= airFriction;
 
-        // Align velocity to heading slightly so you fly where you look
+        // Align velocity to heading so you fly smoothly where you look
         const curSpeed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
         if (curSpeed > 0.1) {
           const desiredX = Math.sin(this.heading) * curSpeed;
           const desiredZ = Math.cos(this.heading) * curSpeed;
-          // Lower alignment strength for smoother flight
-          this.vx += (desiredX - this.vx) * 2.5 * dt;
-          this.vz += (desiredZ - this.vz) * 2.5 * dt;
+          this.vx += (desiredX - this.vx) * 4.0 * dt;
+          this.vz += (desiredZ - this.vz) * 4.0 * dt;
         }
-        
       } else {
         // Normal falling physics & Aerial Tricks
         this.vy -= gravity * dt;
@@ -887,9 +888,9 @@ export class PlayerSkier {
     if (this._keys.right) this._chairLookYaw -= lookSpeed * dt;
     if (this._keys.lookUp)   this._chairLookPitch = Math.min(this._chairLookPitch + pitchSpeed * dt, 8.0);
     if (this._keys.lookDown) this._chairLookPitch = Math.max(this._chairLookPitch - pitchSpeed * dt, -2.0);
-    // Gently return pitch to neutral when not pressing
+    // Gently return pitch to neutral when not pressing (slower return rate for chairlift look)
     if (!this._keys.lookUp && !this._keys.lookDown) {
-      this._chairLookPitch *= 0.92;
+      this._chairLookPitch *= Math.pow(0.99, dt * 60);
     }
 
     // Check for dismount at top station
