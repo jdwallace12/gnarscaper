@@ -882,10 +882,10 @@ export class PlayerSkier {
 
     // Free-look while riding: left/right arrows rotate camera, W/S pitch
     const lookSpeed = 2.0; // radians/sec
-    const pitchSpeed = 2.2;
+    const pitchSpeed = 2.5;
     if (this._keys.left)  this._chairLookYaw += lookSpeed * dt;
     if (this._keys.right) this._chairLookYaw -= lookSpeed * dt;
-    if (this._keys.lookUp)   this._chairLookPitch = Math.min(this._chairLookPitch + pitchSpeed * dt, 4.0);
+    if (this._keys.lookUp)   this._chairLookPitch = Math.min(this._chairLookPitch + pitchSpeed * dt, 8.0);
     if (this._keys.lookDown) this._chairLookPitch = Math.max(this._chairLookPitch - pitchSpeed * dt, -2.0);
     // Gently return pitch to neutral when not pressing
     if (!this._keys.lookUp && !this._keys.lookDown) {
@@ -1295,7 +1295,8 @@ export class PlayerSkier {
     if (!isFinite(this._smoothCamY)) this._smoothCamY = camY;
 
     // Aim focus point right at the skier's body/skis for a clear downward view
-    const lookY = h + 0.4 + pitchForCam * 6;
+    const lookYMultiplier = this.state === 'riding' ? 9.0 : 6.0;
+    const lookY = h + 0.4 + pitchForCam * lookYMultiplier;
     if (this._smoothLookY === undefined || !isFinite(this._smoothLookY)) this._smoothLookY = lookY;
     const lookYSmooth = 1 - Math.pow(0.005, frameDt);
     this._smoothLookY += (lookY - this._smoothLookY) * lookYSmooth;
