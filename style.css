@@ -1270,3 +1270,65 @@ input[type="range"]::-moz-range-thumb {
   color: var(--text-dim);
   text-align: center;
 }
+
+/* Account Handle Settings */
+.tip-account-settings {
+  width: 100%;
+  margin-bottom: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.tip-account-settings-toggle {
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.tip-account-settings-toggle:hover {
+  color: var(--text);
+}
+
+.tip-account-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tip-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+}
+
+.tip-input-group label {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.tip-input-group input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text);
+  font-size: 0.78rem;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.tip-input-group input:focus {
+  border-color: #38bdf8;
+  background: rgba(255, 255, 255, 0.08);
+}
+

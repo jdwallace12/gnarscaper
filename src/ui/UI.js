@@ -678,9 +678,9 @@ export class UI {
               <span class="tip-tier-price">$10</span>
               <span class="tip-tier-title">Black Diamond</span>
             </button>
-            <button class="tip-tier-card" data-amount="15">
+            <button class="tip-tier-card" data-amount="12">
               <span style="display:flex;flex-direction:row;"><span class="tip-tier-emoji" style="transform: rotate(45deg); transform-origin: center center;">⬛</span><span class="tip-tier-emoji" style="transform: rotate(45deg); translateX:5px; transform-origin: center center; translate: 2px;">⬛</span></span>
-              <span class="tip-tier-price">$15</span>
+              <span class="tip-tier-price">$12</span>
               <span class="tip-tier-title">Double Black Diamond</span>
             </button>
           </div>
@@ -689,10 +689,10 @@ export class UI {
         <div class="tip-platforms-section">
           <div class="tip-section-label">Choose Payment Platform</div>
           <div class="tip-platforms-grid">
-            <a href="https://paypal.me" target="_blank" rel="noopener noreferrer" class="tip-platform-btn paypal">
+            <a href="#" target="_blank" rel="noopener noreferrer" class="tip-platform-btn paypal" id="tip-paypal-btn">
               <span class="platform-icon">🅿️</span> PayPal
             </a>
-            <a href="https://venmo.com" target="_blank" rel="noopener noreferrer" class="tip-platform-btn venmo">
+            <a href="#" target="_blank" rel="noopener noreferrer" class="tip-platform-btn venmo" id="tip-venmo-btn">
               <span class="platform-icon">📲</span> Venmo
             </a>
           </div>
@@ -717,14 +717,38 @@ export class UI {
       if (e.target === overlay) this.closeTipModal();
     });
 
+    const paypalBtn = overlay.querySelector('#tip-paypal-btn');
+    const venmoBtn = overlay.querySelector('#tip-venmo-btn');
+
+    // Creator Accounts Configuration
+    const PAYPAL_LINK = 'https://paypal.me/jdwallace12';
+    const VENMO_HANDLE = 'John-Wallace-84';
+
+    let selectedAmount = 5; // default active tier ($5)
+
+    const updateLinks = () => {
+      if (PAYPAL_LINK.includes('paypal.me')) {
+        const cleanBase = PAYPAL_LINK.replace(/\/+$/, '');
+        paypalBtn.href = `${cleanBase}/${selectedAmount}`;
+      } else {
+        paypalBtn.href = PAYPAL_LINK;
+      }
+      venmoBtn.href = `https://venmo.com/${VENMO_HANDLE}?txn=pay&amount=${selectedAmount}&note=GnarScaper%20Tip`;
+    };
+
     // Tier selection card highlight
     const tierCards = overlay.querySelectorAll('.tip-tier-card');
     tierCards.forEach(card => {
       card.addEventListener('click', () => {
         tierCards.forEach(c => c.classList.remove('active'));
         card.classList.add('active');
+        selectedAmount = parseInt(card.dataset.amount, 10) || 5;
+        updateLinks();
       });
     });
+
+    // Initialize links
+    updateLinks();
 
     // Copy link button
     const copyBtn = overlay.querySelector('#tip-copy-btn');
