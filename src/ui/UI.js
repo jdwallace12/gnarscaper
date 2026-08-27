@@ -200,8 +200,18 @@ export class UI {
       if (this.callbacks.onResetCamera) this.callbacks.onResetCamera();
     });
     topbarActions.appendChild(resetCamBtn);
-
     topbarActions.appendChild(skiBtn);
+
+    // Tip / Donate Button (Topbar)
+    const tipBtn = document.createElement('button');
+    tipBtn.className = 'tip-me-btn';
+    tipBtn.innerHTML = '<span>☕</span> Tip Me';
+    tipBtn.title = 'Support GnarScaper development!';
+    tipBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openTipModal();
+    });
+    topbarActions.appendChild(tipBtn);
 
     // Title
     const title = document.createElement('div');
@@ -617,6 +627,173 @@ export class UI {
       • <b>Ski Mode:</b> Drop a skier to test your mountain!
     `;
     sidebar.appendChild(hint);
+
+    // Tip / Donate Button (Sidebar)
+    sidebar.appendChild(this._divider());
+    const sidebarTipBtn = document.createElement('button');
+    sidebarTipBtn.className = 'sidebar-tip-btn';
+    sidebarTipBtn.innerHTML = '💖 Support GnarScaper';
+    sidebarTipBtn.title = 'Support creator & future updates';
+    sidebarTipBtn.addEventListener('click', () => this.openTipModal());
+    sidebar.appendChild(sidebarTipBtn);
+
+    // Build modal DOM
+    this._buildTipModal();
+  }
+
+  _buildTipModal() {
+    if (document.getElementById('tip-modal-overlay')) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'tip-modal-overlay';
+    overlay.className = 'tip-modal-overlay';
+
+    overlay.innerHTML = `
+      <div class="tip-modal-content" id="tip-modal">
+        <button class="tip-modal-close" id="tip-modal-close" title="Close">&times;</button>
+
+        <div class="tip-modal-header">
+          <div class="tip-modal-badge">☕ Support GnarScaper</div>
+          <h2 class="tip-modal-title">Enjoying the Gnar?</h2>
+          <p class="tip-modal-subtitle">
+            Hope you are enjoying GnarScaper as much as I enjoyed making it! Your support helps fund future features and improvements.
+          </p>
+        </div>
+
+        <div class="tip-tiers-section">
+          <div class="tip-section-label">Select a Tip Amount</div>
+          <div class="tip-tiers-grid">
+            <button class="tip-tier-card" data-amount="3">
+              <span class="tip-tier-emoji">🟢</span>
+              <span class="tip-tier-price">$3</span>
+              <span class="tip-tier-title">Green Circle</span>
+            </button>
+            <button class="tip-tier-card active" data-amount="5">
+              <span class="tip-tier-emoji">🟦</span>
+              <span class="tip-tier-price">$5</span>
+              <span class="tip-tier-title">Blue Square</span>
+            </button>
+            <button class="tip-tier-card" data-amount="10">
+              <span class="tip-tier-emoji" style="transform: rotate(45deg); transform-origin: center center;">⬛</span>
+              <span class="tip-tier-price">$10</span>
+              <span class="tip-tier-title">Black Diamond</span>
+            </button>
+            <button class="tip-tier-card" data-amount="12">
+              <span style="display:flex;flex-direction:row;"><span class="tip-tier-emoji" style="transform: rotate(45deg); transform-origin: center center;">⬛</span><span class="tip-tier-emoji" style="transform: rotate(45deg); translateX:5px; transform-origin: center center; translate: 2px;">⬛</span></span>
+              <span class="tip-tier-price">$12</span>
+              <span class="tip-tier-title">Double Black Diamond</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="tip-platforms-section">
+          <div class="tip-section-label">Choose Payment Platform</div>
+          <div class="tip-platforms-grid">
+            <a href="#" target="_blank" rel="noopener noreferrer" class="tip-platform-btn paypal" id="tip-paypal-btn">
+              <span class="platform-icon">🅿️</span> PayPal
+            </a>
+            <a href="#" target="_blank" rel="noopener noreferrer" class="tip-platform-btn venmo" id="tip-venmo-btn">
+              <span class="platform-icon">📲</span> Venmo
+            </a>
+          </div>
+        </div>
+
+        <div class="tip-modal-footer">
+          <button class="tip-copy-btn" id="tip-copy-btn">
+            <span id="tip-copy-icon">🔗</span> <span id="tip-copy-text">Share / Copy Page Link</span>
+          </button>
+          <div class="tip-thank-you">Thank you for being part of the GnarScaper community! 🏔️</div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Event listeners
+    const closeBtn = overlay.querySelector('#tip-modal-close');
+    closeBtn.addEventListener('click', () => this.closeTipModal());
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) this.closeTipModal();
+    });
+
+    const paypalBtn = overlay.querySelector('#tip-paypal-btn');
+    const venmoBtn = overlay.querySelector('#tip-venmo-btn');
+
+    // Creator Accounts Configuration
+    const PAYPAL_LINK = 'https://paypal.me/jdwallace12';
+    const VENMO_HANDLE = 'John-Wallace-84';
+
+    let selectedAmount = 5; // default active tier ($5)
+
+    const updateLinks = () => {
+      if (PAYPAL_LINK.includes('paypal.me')) {
+        const cleanBase = PAYPAL_LINK.replace(/\/+$/, '');
+        paypalBtn.href = `${cleanBase}/${selectedAmount}`;
+      } else {
+        paypalBtn.href = PAYPAL_LINK;
+      }
+      venmoBtn.href = `https://venmo.com/${VENMO_HANDLE}?txn=pay&amount=${selectedAmount}&note=GnarScaper%20Tip`;
+    };
+
+    // Tier selection card highlight
+    const tierCards = overlay.querySelectorAll('.tip-tier-card');
+    tierCards.forEach(card => {
+      card.addEventListener('click', () => {
+        tierCards.forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        selectedAmount = parseInt(card.dataset.amount, 10) || 5;
+        updateLinks();
+      });
+    });
+
+    // Initialize links
+    updateLinks();
+
+    // Copy link button
+    const copyBtn = overlay.querySelector('#tip-copy-btn');
+    const copyText = overlay.querySelector('#tip-copy-text');
+    const copyIcon = overlay.querySelector('#tip-copy-icon');
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        copyIcon.textContent = '✅';
+        copyText.textContent = 'Link Copied to Clipboard!';
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyIcon.textContent = '🔗';
+          copyText.textContent = 'Share / Copy Page Link';
+          copyBtn.classList.remove('copied');
+        }, 2500);
+      } catch (err) {
+        console.error('Clipboard copy failed:', err);
+      }
+    });
+
+    this._tipOverlay = overlay;
+  }
+
+  openTipModal() {
+    if (!this._tipOverlay) this._buildTipModal();
+    this._tipOverlay.classList.add('active');
+
+    this._escHandler = (e) => {
+      if (e.key === 'Escape' && this._tipOverlay.classList.contains('active')) {
+        this.closeTipModal();
+      }
+    };
+    window.addEventListener('keydown', this._escHandler);
+  }
+
+  closeTipModal() {
+    if (this._tipOverlay) {
+      this._tipOverlay.classList.remove('active');
+    }
+    if (this._escHandler) {
+      window.removeEventListener('keydown', this._escHandler);
+      this._escHandler = null;
+    }
   }
 
   _selectTool(key) {
