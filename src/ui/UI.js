@@ -661,7 +661,7 @@ export class UI {
         </div>
 
         <div class="tip-tiers-section">
-          <div class="tip-section-label">Select a Tip Amount</div>
+          <div class="tip-section-label">Select a Donation Amount</div>
           <div class="tip-tiers-grid">
             <button class="tip-tier-card" data-amount="3">
               <span class="tip-tier-emoji">🟢</span>
