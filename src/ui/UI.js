@@ -203,15 +203,15 @@ export class UI {
     topbarActions.appendChild(skiBtn);
 
     // Tip / Donate Button (Topbar)
-    const tipBtn = document.createElement('button');
-    tipBtn.className = 'tip-me-btn';
-    tipBtn.innerHTML = '<span>☕</span> Tip Me';
-    tipBtn.title = 'Support GnarScaper development!';
-    tipBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.openTipModal();
-    });
-    topbarActions.appendChild(tipBtn);
+    // const tipBtn = document.createElement('button');
+    // tipBtn.className = 'tip-me-btn';
+    // tipBtn.innerHTML = '<span>☕</span> Tip Me';
+    // tipBtn.title = 'Support GnarScaper development!';
+    // tipBtn.addEventListener('click', (e) => {
+    //   e.stopPropagation();
+    //   this.openTipModal();
+    // });
+    // topbarActions.appendChild(tipBtn);
 
     // Title
     const title = document.createElement('div');
