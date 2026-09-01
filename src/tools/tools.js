@@ -907,7 +907,7 @@ export const TOOLS = {
   },
 
   chairlift: {
-    name: 'Chairlift',
+    name: 'Double Chair',
     icon: '🚡',
     color: '#3b82f6',
     cursor: 'crosshair',
@@ -915,6 +915,19 @@ export const TOOLS = {
     category: 'Skiing',
     isChairlift: true,
     liftType: 'chairlift',
+    apply() { /* no-op — handled externally */ },
+  },
+
+  quad: {
+    name: 'Quad Chair',
+    icon: '🚠',
+    color: '#06b6d4',
+    cursor: 'crosshair',
+    isBrush: false,
+    category: 'Skiing',
+    isChairlift: true,
+    isQuad: true,
+    liftType: 'quad',
     apply() { /* no-op — handled externally */ },
   },
 

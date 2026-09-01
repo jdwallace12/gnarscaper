@@ -301,7 +301,7 @@ export class Skiers {
            if (!bestChair.passengers) bestChair.passengers = [];
            bestChair.passengers.push(s);
            bestChair.passenger = s;
-           s.tramSeatIdx = bestChair.passengers.length - 1;
+           s.seatIdx = bestChair.passengers.length - 1;
            s.chair = bestChair;
            s.state = 'riding';
            s.mesh.visible = true;
@@ -315,6 +315,7 @@ export class Skiers {
          const p = s.chair.mesh.position;
          const chairAngle = s.chair.mesh.rotation.y;
          const isTram = (s.targetLine && s.targetLine.type === 'tram');
+         const isQuad = (s.targetLine && s.targetLine.type === 'quad');
 
          let xOffset = 0;
          let zOffset = 0;
@@ -322,9 +323,21 @@ export class Skiers {
 
          if (isTram) {
            yOffset = -1.8;
-           const seat = (s.tramSeatIdx || 0) % 6;
+           const seat = (s.seatIdx || 0) % 6;
            xOffset = ((seat % 2) - 0.5) * 0.7;
            zOffset = (Math.floor(seat / 2) - 1.0) * 0.6;
+         } else if (isQuad) {
+           yOffset = -0.52;
+           const lateralOffset = ((s.seatIdx || 0) - 1.5) * 0.38;
+           // Align perpendicular to chair travel direction
+           xOffset = Math.cos(chairAngle + Math.PI / 2) * lateralOffset;
+           zOffset = Math.sin(chairAngle + Math.PI / 2) * lateralOffset;
+         } else {
+           // Double chair
+           yOffset = -0.5;
+           const lateralOffset = ((s.seatIdx || 0) - 0.5) * 0.35;
+           xOffset = Math.cos(chairAngle + Math.PI / 2) * lateralOffset;
+           zOffset = Math.sin(chairAngle + Math.PI / 2) * lateralOffset;
          }
 
          // sit or stand — keep wx/wz in sync with vehicle
@@ -332,7 +345,7 @@ export class Skiers {
          s.wz = p.z + zOffset;
          s.mesh.position.set(s.wx, p.y + yOffset, s.wz);
          s.mesh.rotation.y = isTram ? chairAngle : (chairAngle + Math.PI / 2);
-         s.mesh.scale.setScalar(isTram ? 0.7 : 1.0);
+         s.mesh.scale.setScalar(isTram ? 0.7 : 0.9);
 
          const isP1Base = (s.targetStation === s.targetLine.p1);
          let reachedTop = false;

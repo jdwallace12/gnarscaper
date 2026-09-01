@@ -1,9 +1,10 @@
 import * as THREE from 'three/webgpu';
 
 /**
- * Procedural lift system supporting both traditional Chairlifts and iconic Aerial Trams.
- * User places Point A (base) and Point B (summit). This builds support towers along the line,
- * strings cables, and animates vehicles (chairs or reversible tram cabins).
+ * Procedural lift system supporting:
+ * 1. Double Chairlift (Classic fixed-grip 2-seater, relaxed speed)
+ * 2. Quad Chairlift (High-speed express 4-seater, fast speed)
+ * 3. Aerial Tram (Iconic reversible panoramic cabins, maximum speed)
  */
 
 export class Chairlifts {
@@ -12,12 +13,23 @@ export class Chairlifts {
     this.group = new THREE.Group();
     this.lines = []; // { group, length, chairs, p1, p2, type, trackOffset, speed }
 
-    // Shared Materials - Chairlift
+    // Shared Materials - Cable & Tower
     this.matTower = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8, metalness: 0.6 });
+    this.matQuadTower = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.5, metalness: 0.7 });
     this.matCable = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 2 });
-    this.matChair = new THREE.MeshStandardMaterial({ color: 0xe63946, roughness: 0.5 }); // Red chairs
 
-    // Shared Materials - Aerial Tram
+    // Materials - Double Chair
+    this.matDoubleChair = new THREE.MeshStandardMaterial({ color: 0xe63946, roughness: 0.5 }); // Classic Red
+    this.matDoublePole = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8 });
+
+    // Materials - Quad Chair
+    this.matQuadCushion = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.6, metalness: 0.1 }); // Sky Blue cushions
+    this.matQuadFrame = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3, metalness: 0.8 }); // Slate metal frame
+    this.matQuadBar = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.4, metalness: 0.7 }); // Amber footrests/bar
+    this.matQuadStationCover = new THREE.MeshStandardMaterial({ color: 0x0369a1, roughness: 0.3, metalness: 0.4 }); // Express Blue canopy
+    this.matQuadStationTrim = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2, metalness: 0.5 }); // Crisp white trim
+
+    // Materials - Aerial Tram
     this.matTramTower = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5, metalness: 0.7 });
     this.matTramCrossbar = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.8 });
     this.matTramSheave = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.4, metalness: 0.8 }); // Yellow/gold pulleys
@@ -36,20 +48,22 @@ export class Chairlifts {
     this.matTramStationRoof = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.5 });
     this.matTramStationAccent = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.4, metalness: 0.8 });
 
-    // Movement speeds
-    this.chairliftSpeed = 12.0;
-    this.tramSpeed = 16.0;
+    // Movement speeds (world units per second)
+    this.doubleChairSpeed = 8.0; // Slower, relaxed classic fixed-grip
+    this.quadChairSpeed = 12.0;   // Current high-speed express quad speed
+    this.tramSpeed = 16.0;        // Fast aerial tramway speed
   }
 
   /**
    * Build a complete lift line between world points p1 and p2.
    * @param {THREE.Vector3} p1 - Base station point
    * @param {THREE.Vector3} p2 - Summit station point
-   * @param {object|string} options - { type: 'chairlift' | 'tram' } or 'tram'
+   * @param {object|string} options - { type: 'chairlift' | 'quad' | 'tram' }
    */
   buildLine(p1, p2, options = {}) {
     const type = typeof options === 'string' ? options : (options.type || 'chairlift');
     const isTram = type === 'tram';
+    const isQuad = type === 'quad';
     const lineGroup = new THREE.Group();
     
     const dx = p2.x - p1.x;
@@ -58,7 +72,7 @@ export class Chairlifts {
     if (horizontalLength < 5) return; // Too short!
 
     // Flatten terrain pads under base (p1) and top (p2) stations
-    const padRadius = isTram ? 16 : 12;
+    const padRadius = isTram ? 16 : (isQuad ? 14 : 12);
     if (this.terrain && this.terrain.flattenPad) {
       this.terrain.flattenPad(p1.x, p1.z, padRadius);
       this.terrain.flattenPad(p2.x, p2.z, padRadius);
@@ -66,13 +80,13 @@ export class Chairlifts {
       p2.y = this.terrain.getInterpolatedHeight(p2.x, p2.z);
     }
 
-    // Determine tower spacing and cable clearance
-    const towerSpacing = isTram ? 45 : 30;
+    // Determine tower spacing, clearance, and track width
+    const towerSpacing = isTram ? 45 : (isQuad ? 32 : 28);
     const towerCount = Math.max(2, Math.floor(horizontalLength / towerSpacing));
     const step = 1.0 / towerCount;
-    const clearance = isTram ? 11.0 : 8.0;
-    const minHeightAboveTerrain = isTram ? 4.5 : 3.0;
-    const trackOffset = isTram ? 1.6 : 0.75;
+    const clearance = isTram ? 11.0 : (isQuad ? 8.5 : 7.5);
+    const minHeightAboveTerrain = isTram ? 4.5 : (isQuad ? 3.5 : 3.0);
+    const trackOffset = isTram ? 1.6 : (isQuad ? 1.1 : 0.75);
     const angle = Math.atan2(dz, dx);
 
     // Cable path arrays
@@ -102,8 +116,14 @@ export class Chairlifts {
         towerObj.position.set(tx, h, tz);
         towerObj.rotation.y = angle + Math.PI / 2;
         lineGroup.add(towerObj);
+      } else if (isQuad) {
+        // Build Modern Quad Chairlift Tubular Tower with wide crosshead
+        const towerObj = this._buildQuadTower(towerHeight, trackOffset);
+        towerObj.position.set(tx, h, tz);
+        towerObj.rotation.y = angle + Math.PI / 2;
+        lineGroup.add(towerObj);
       } else {
-        // Build standard Chairlift Tower
+        // Build Classic Double Chairlift Tower
         const towerGeo = new THREE.CylinderGeometry(0.1, 0.2, towerHeight, 4);
         towerGeo.translate(0, towerHeight / 2, 0);
         const towerMesh = new THREE.Mesh(towerGeo, this.matTower);
@@ -134,7 +154,7 @@ export class Chairlifts {
     lineGroup.add(new THREE.Line(cableGeoLeft, this.matCable));
     lineGroup.add(new THREE.Line(cableGeoRight, this.matCable));
 
-    // For tram: add second parallel track cables for authentic heavy dual-cable track appearance
+    // For tram: add second parallel track cables
     if (isTram) {
       const cableGeoLeft2 = new THREE.BufferGeometry().setFromPoints(cablePoints.map(p => {
         const perpAngle = angle + Math.PI / 2;
@@ -154,12 +174,11 @@ export class Chairlifts {
       totalLength += cablePoints[i].distanceTo(cablePoints[i+1]);
     }
 
-    // Build Vehicles (Chairs or Tram Cabins)
+    // Build Vehicles (Double Chairs, Quad Chairs, or Tram Cabins)
     const chairs = [];
 
     if (isTram) {
       // Reversible Aerial Tramway: 2 Large Panoramic Cabins (Car 1 and Car 2)
-      // Car 1 (Red / Crimson) starts at progress 0.0 (Base)
       const tram1 = this._buildTramCabin(this.matTramCabinBody1, '1');
       chairs.push({
         mesh: tram1,
@@ -171,7 +190,6 @@ export class Chairlifts {
       });
       lineGroup.add(tram1);
 
-      // Car 2 (Royal Blue) starts at progress 0.5 (Summit)
       const tram2 = this._buildTramCabin(this.matTramCabinBody2, '2');
       chairs.push({
         mesh: tram2,
@@ -182,8 +200,25 @@ export class Chairlifts {
         passenger: null
       });
       lineGroup.add(tram2);
+    } else if (isQuad) {
+      // High-Speed Quad: 4-passenger chairs spaced every ~7 units
+      const chairCount = Math.max(4, Math.floor(totalLength / 7));
+      for (let i = 0; i < chairCount; i++) {
+        const quadGrp = this._buildQuadChair();
+        const progress = i / chairCount;
+        chairs.push({
+          mesh: quadGrp,
+          progress: progress,
+          isTram: false,
+          isQuad: true,
+          capacity: 4,
+          passengers: [],
+          passenger: null
+        });
+        lineGroup.add(quadGrp);
+      }
     } else {
-      // Traditional Chairlift: Chairs spaced every ~5 units along the loop
+      // Classic Double Chairlift: 2-passenger chairs spaced every ~5 units
       const chairCount = Math.max(4, Math.floor(totalLength / 5));
       for (let i = 0; i < chairCount; i++) {
         const chairGrp = this._buildChair();
@@ -192,7 +227,8 @@ export class Chairlifts {
           mesh: chairGrp,
           progress: progress,
           isTram: false,
-          capacity: 1,
+          isQuad: false,
+          capacity: 2,
           passengers: [],
           passenger: null
         });
@@ -211,6 +247,16 @@ export class Chairlifts {
       station2.position.set(p2.x, p2.y, p2.z);
       station2.rotation.y = angle + Math.PI / 2;
       lineGroup.add(station2);
+    } else if (isQuad) {
+      const station1 = this._buildQuadStation();
+      station1.position.set(p1.x, p1.y, p1.z);
+      station1.rotation.y = angle + Math.PI / 2;
+      lineGroup.add(station1);
+
+      const station2 = this._buildQuadStation();
+      station2.position.set(p2.x, p2.y, p2.z);
+      station2.rotation.y = angle + Math.PI / 2;
+      lineGroup.add(station2);
     } else {
       const station1 = this._buildStation();
       station1.position.set(p1.x, p1.y, p1.z);
@@ -225,6 +271,11 @@ export class Chairlifts {
 
     this.group.add(lineGroup);
 
+    // Set appropriate line speed
+    let speed = this.doubleChairSpeed;
+    if (isTram) speed = this.tramSpeed;
+    else if (isQuad) speed = this.quadChairSpeed;
+
     this.lines.push({
       group: lineGroup,
       cablePoints,
@@ -235,7 +286,7 @@ export class Chairlifts {
       p2: p2.clone(),
       type: type,
       trackOffset: trackOffset,
-      speed: isTram ? this.tramSpeed : this.chairliftSpeed
+      speed: speed
     });
   }
 
@@ -313,30 +364,35 @@ export class Chairlifts {
   }
 
   /* ----------------------------------------------------
-   * CHAIRLIFT GEOMETRY BUILDERS
+   * CLASSIC DOUBLE CHAIRLIFT GEOMETRY BUILDERS
    * ---------------------------------------------------- */
   _buildChair() {
     const g = new THREE.Group();
     
     // Hanger pole
-    const poleMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8 });
-    const poleObj = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.0, 4), poleMat);
+    const poleObj = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.0, 4), this.matDoublePole);
     poleObj.position.y = -1.0;
     g.add(poleObj);
 
     // Bench
-    const benchGeo = new THREE.BoxGeometry(1.6, 0.2, 0.6);
-    const bench = new THREE.Mesh(benchGeo, this.matChair);
+    const benchGeo = new THREE.BoxGeometry(1.5, 0.18, 0.6);
+    const bench = new THREE.Mesh(benchGeo, this.matDoubleChair);
     bench.position.set(0, -2.0, 0);
     g.add(bench);
 
     // Backrest
-    const backGeo = new THREE.BoxGeometry(1.6, 0.6, 0.1);
-    const back = new THREE.Mesh(backGeo, this.matChair);
-    back.position.set(0, -1.6, -0.25);
+    const backGeo = new THREE.BoxGeometry(1.5, 0.55, 0.1);
+    const back = new THREE.Mesh(backGeo, this.matDoubleChair);
+    back.position.set(0, -1.65, -0.25);
     g.add(back);
 
-    g.scale.setScalar(0.4); // Standard chairlift scale
+    // Safety Bar
+    const barGeo = new THREE.BoxGeometry(1.5, 0.06, 0.06);
+    const bar = new THREE.Mesh(barGeo, this.matDoublePole);
+    bar.position.set(0, -1.8, 0.28);
+    g.add(bar);
+
+    g.scale.setScalar(0.42); // Classic double chair scale
     g.castShadow = true;
     return g;
   }
@@ -363,7 +419,7 @@ export class Chairlifts {
     roof.castShadow = true;
     g.add(roof);
 
-    // A dark empty doorway/opening for the chairs to go through
+    // Opening
     const doorMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1.0 });
     const doorGeo = new THREE.BoxGeometry(2.4, 2.0, 3.1);
     doorGeo.translate(0, 1.0, 0);
@@ -371,6 +427,139 @@ export class Chairlifts {
     g.add(door);
 
     g.scale.setScalar(0.7);
+    return g;
+  }
+
+  /* ----------------------------------------------------
+   * HIGH-SPEED QUAD CHAIRLIFT GEOMETRY BUILDERS
+   * ---------------------------------------------------- */
+  _buildQuadTower(towerHeight, trackOffset) {
+    const g = new THREE.Group();
+
+    // Central tubular steel tower
+    const towerGeo = new THREE.CylinderGeometry(0.18, 0.32, towerHeight, 8);
+    towerGeo.translate(0, towerHeight / 2, 0);
+    const towerMesh = new THREE.Mesh(towerGeo, this.matQuadTower);
+    towerMesh.castShadow = true;
+    g.add(towerMesh);
+
+    // Wide T-Bar / Crosshead
+    const crossarmWidth = trackOffset * 2 + 1.2;
+    const crossarmGeo = new THREE.BoxGeometry(crossarmWidth, 0.3, 0.35);
+    const crossarm = new THREE.Mesh(crossarmGeo, this.matQuadTower);
+    crossarm.position.set(0, towerHeight, 0);
+    crossarm.castShadow = true;
+    g.add(crossarm);
+
+    // Sheave battery assemblies (4 yellow wheels on each side)
+    [-trackOffset, trackOffset].forEach(sideX => {
+      const beamGeo = new THREE.BoxGeometry(0.2, 0.15, 1.2);
+      const beam = new THREE.Mesh(beamGeo, this.matQuadTower);
+      beam.position.set(sideX, towerHeight + 0.1, 0);
+      g.add(beam);
+
+      [-0.45, -0.15, 0.15, 0.45].forEach(zOffset => {
+        const wheelGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.06, 8);
+        wheelGeo.rotateZ(Math.PI / 2);
+        const wheel = new THREE.Mesh(wheelGeo, this.matTramSheave);
+        wheel.position.set(sideX, towerHeight + 0.18, zOffset);
+        g.add(wheel);
+      });
+    });
+
+    return g;
+  }
+
+  _buildQuadChair() {
+    const g = new THREE.Group();
+
+    // 1. Detachable cable grip clamp
+    const gripGeo = new THREE.BoxGeometry(0.2, 0.15, 0.35);
+    const grip = new THREE.Mesh(gripGeo, this.matQuadFrame);
+    grip.position.set(0, 0, 0);
+    g.add(grip);
+
+    // 2. Arching steel hanger arm
+    const armGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.8, 6);
+    const arm = new THREE.Mesh(armGeo, this.matQuadFrame);
+    arm.position.set(0, -0.9, 0);
+    g.add(arm);
+
+    // 3. Wide 4-seater bench frame
+    const frameGeo = new THREE.BoxGeometry(2.3, 0.12, 0.7);
+    const frame = new THREE.Mesh(frameGeo, this.matQuadFrame);
+    frame.position.set(0, -1.8, 0);
+    g.add(frame);
+
+    // 4 individual contoured blue seat cushions
+    [-0.84, -0.28, 0.28, 0.84].forEach(x => {
+      const seatGeo = new THREE.BoxGeometry(0.5, 0.12, 0.6);
+      const seat = new THREE.Mesh(seatGeo, this.matQuadCushion);
+      seat.position.set(x, -1.74, 0.02);
+      g.add(seat);
+
+      // Backrest cushion
+      const backGeo = new THREE.BoxGeometry(0.5, 0.55, 0.1);
+      const back = new THREE.Mesh(backGeo, this.matQuadCushion);
+      back.position.set(x, -1.45, -0.28);
+      g.add(back);
+
+      // Footrest hanger
+      const footrestGeo = new THREE.BoxGeometry(0.4, 0.05, 0.2);
+      const footrest = new THREE.Mesh(footrestGeo, this.matQuadBar);
+      footrest.position.set(x, -2.1, 0.28);
+      g.add(footrest);
+    });
+
+    // Safety pull-down bar
+    const barGeo = new THREE.BoxGeometry(2.35, 0.06, 0.06);
+    const bar = new THREE.Mesh(barGeo, this.matQuadBar);
+    bar.position.set(0, -1.6, 0.32);
+    g.add(bar);
+
+    g.scale.setScalar(0.45); // Quad chairlift scale
+    g.castShadow = true;
+    return g;
+  }
+
+  _buildQuadStation() {
+    const g = new THREE.Group();
+
+    // Modern Terminal Platform
+    const dockGeo = new THREE.BoxGeometry(5.2, 1.0, 6.8);
+    dockGeo.translate(0, 0.5, 0);
+    const dock = new THREE.Mesh(dockGeo, this.matQuadFrame);
+    dock.castShadow = true;
+    dock.receiveShadow = true;
+    g.add(dock);
+
+    // Aerodynamic Curved Express Enclosure Canopy
+    const canopyGeo = new THREE.BoxGeometry(4.8, 3.2, 5.8);
+    canopyGeo.translate(0, 2.5, -0.4);
+    const canopy = new THREE.Mesh(canopyGeo, this.matQuadStationCover);
+    canopy.castShadow = true;
+    g.add(canopy);
+
+    // Express White Trim on station roof
+    const trimGeo = new THREE.BoxGeometry(5.0, 0.2, 6.0);
+    trimGeo.translate(0, 4.15, -0.4);
+    const trim = new THREE.Mesh(trimGeo, this.matQuadStationTrim);
+    g.add(trim);
+
+    // Internal Bullwheel
+    const bullwheelGeo = new THREE.CylinderGeometry(1.4, 1.4, 0.25, 16);
+    const bullwheel = new THREE.Mesh(bullwheelGeo, this.matTramSheave);
+    bullwheel.position.set(0, 3.2, -0.6);
+    g.add(bullwheel);
+
+    // Open entrance for chairs
+    const bayMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.9 });
+    const bayGeo = new THREE.BoxGeometry(3.6, 2.4, 3.2);
+    bayGeo.translate(0, 1.8, 1.5);
+    const bay = new THREE.Mesh(bayGeo, bayMat);
+    g.add(bay);
+
+    g.scale.setScalar(0.72);
     return g;
   }
 
