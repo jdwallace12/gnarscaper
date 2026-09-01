@@ -789,8 +789,9 @@ export class PlayerSkier {
       const dx = baseStation.x - this.wx;
       const dz = baseStation.z - this.wz;
       const distSq = dx * dx + dz * dz;
+      const boardRadius = line.type === 'tram' ? 6.5 : 4.0;
 
-      if (distSq < 4.0 * 4.0) {
+      if (distSq < boardRadius * boardRadius) {
         this.state = 'waiting';
         this.targetStation = baseStation;
         this.targetLine = line;
@@ -816,22 +817,23 @@ export class PlayerSkier {
 
     this._waitingTime += dt;
 
-    // Look for a chair departing UPWARDS from the base station
+    // Look for a chair/cabin departing UPWARDS from the base station
     const isP1Base = this.targetStation === this.targetLine.p1;
+    const window = this.targetLine.type === 'tram' ? 0.08 : 0.06;
 
     for (const chair of this.targetLine.chairs) {
       if (isP1Base) {
         // Base is p1: upward direction is progress 0.0 -> 0.5
-        // Board only when chair has turned around at p1 and is departing UPWARDS
-        if (chair.progress >= 0.0 && chair.progress <= 0.06) {
+        // Board only when vehicle has turned around at p1 and is departing UPWARDS
+        if ((chair.progress >= 0.0 && chair.progress <= window) || chair.progress >= 0.98) {
           this.state = 'riding';
           this.chair = chair;
           break;
         }
       } else {
         // Base is p2: upward direction is progress 0.5 -> 1.0
-        // Board only when chair has turned around at p2 and is departing UPWARDS
-        if (chair.progress >= 0.50 && chair.progress <= 0.56) {
+        // Board only when vehicle has turned around at p2 and is departing UPWARDS
+        if (chair.progress >= 0.50 && chair.progress <= (0.50 + window)) {
           this.state = 'riding';
           this.chair = chair;
           break;
@@ -847,7 +849,7 @@ export class PlayerSkier {
     this._prevWz = this.wz;
     this._prevY = this.y;
 
-    // Follow the chair mesh
+    // Follow the chair/tram cabin mesh
     if (!this.chair || !this.chair.mesh) {
       this.state = 'skiing';
       this.chair = null;
@@ -867,7 +869,8 @@ export class PlayerSkier {
 
     this.wx = chairPos.x;
     this.wz = chairPos.z;
-    this.y = chairPos.y - 0.7; // Sit slightly below the chair bar
+    const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : 0.7;
+    this.y = chairPos.y - rideOffset; // Sit/stand naturally inside cabin or on chairlift bench
 
     // Guard: if position somehow became NaN, bail out of riding
     if (!isFinite(this.wx) || !isFinite(this.wz) || !isFinite(this.y)) {
@@ -888,7 +891,7 @@ export class PlayerSkier {
     if (this._keys.right) this._chairLookYaw -= lookSpeed * dt;
     if (this._keys.lookUp)   this._chairLookPitch = Math.min(this._chairLookPitch + pitchSpeed * dt, 8.0);
     if (this._keys.lookDown) this._chairLookPitch = Math.max(this._chairLookPitch - pitchSpeed * dt, -2.0);
-    // Gently return pitch to neutral when not pressing (slower return rate for chairlift look)
+    // Gently return pitch to neutral when not pressing (slower return rate for lift look)
     if (!this._keys.lookUp && !this._keys.lookDown) {
       this._chairLookPitch *= Math.pow(0.99, dt * 60);
     }
@@ -899,12 +902,12 @@ export class PlayerSkier {
 
     if (isP1Base) {
       // Top station is p2 (progress = 0.5)
-      if (this.chair.progress >= 0.46 && this.chair.progress <= 0.52) {
+      if (this.chair.progress >= 0.46 && this.chair.progress <= 0.53) {
         reachedTop = true;
       }
     } else {
       // Top station is p1 (progress = 1.0 / 0.0)
-      if (this.chair.progress >= 0.96 || this.chair.progress <= 0.02) {
+      if (this.chair.progress >= 0.96 || this.chair.progress <= 0.03) {
         reachedTop = true;
       }
     }

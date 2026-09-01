@@ -269,22 +269,25 @@ export class Skiers {
         // Determine if targetStation is p1 or p2
         const isP1Base = (s.targetStation === s.targetLine.p1);
         let bestChair = null;
-        let bestDiff = 0.08;
+        let bestDiff = s.targetLine.type === 'tram' ? 0.12 : 0.08;
         
         for (const chair of s.targetLine.chairs) {
-           if (chair.passenger) continue;
+           const maxCap = chair.capacity || 1;
+           const currentCount = chair.passengers ? chair.passengers.length : (chair.passenger ? 1 : 0);
+           if (currentCount >= maxCap) continue;
            
            if (isP1Base) {
-             // Upward direction from p1 is progress 0.0 -> 0.5
-             if (chair.progress >= 0.0 && chair.progress <= 0.08) {
-               if (chair.progress < bestDiff) {
-                 bestDiff = chair.progress;
+             // Upward direction from p1 is progress 0.0 -> 0.5 (or arriving at 0.98)
+             const pVal = (chair.progress >= 0.98) ? 0 : chair.progress;
+             if ((chair.progress >= 0.0 && chair.progress <= 0.09) || chair.progress >= 0.98) {
+               if (pVal < bestDiff) {
+                 bestDiff = pVal;
                  bestChair = chair;
                }
              }
            } else {
              // Upward direction from p2 is progress 0.5 -> 1.0
-             if (chair.progress >= 0.50 && chair.progress <= 0.58) {
+             if (chair.progress >= 0.50 && chair.progress <= 0.59) {
                const diff = chair.progress - 0.50;
                if (diff < bestDiff) {
                  bestDiff = diff;
@@ -295,7 +298,10 @@ export class Skiers {
         }
         
         if (bestChair) {
+           if (!bestChair.passengers) bestChair.passengers = [];
+           bestChair.passengers.push(s);
            bestChair.passenger = s;
+           s.tramSeatIdx = bestChair.passengers.length - 1;
            s.chair = bestChair;
            s.state = 'riding';
            s.mesh.visible = true;
@@ -308,29 +314,47 @@ export class Skiers {
          if (s.chuteGroup) s.chuteGroup.visible = false;
          const p = s.chair.mesh.position;
          const chairAngle = s.chair.mesh.rotation.y;
-         // sit sideways — keep wx/wz in sync with chair
-         s.wx = p.x;
-         s.wz = p.z;
-         // Sit a bit higher and more forward to ensure they aren't hidden inside the geometry
-         s.mesh.position.set(p.x, p.y - 0.5, p.z);
-         s.mesh.rotation.y = chairAngle + Math.PI / 2;
-         s.mesh.scale.setScalar(1.0); // Make them larger temporarily!
+         const isTram = (s.targetLine && s.targetLine.type === 'tram');
+
+         let xOffset = 0;
+         let zOffset = 0;
+         let yOffset = -0.5;
+
+         if (isTram) {
+           yOffset = -1.8;
+           const seat = (s.tramSeatIdx || 0) % 6;
+           xOffset = ((seat % 2) - 0.5) * 0.7;
+           zOffset = (Math.floor(seat / 2) - 1.0) * 0.6;
+         }
+
+         // sit or stand — keep wx/wz in sync with vehicle
+         s.wx = p.x + xOffset;
+         s.wz = p.z + zOffset;
+         s.mesh.position.set(s.wx, p.y + yOffset, s.wz);
+         s.mesh.rotation.y = isTram ? chairAngle : (chairAngle + Math.PI / 2);
+         s.mesh.scale.setScalar(isTram ? 0.7 : 1.0);
 
          const isP1Base = (s.targetStation === s.targetLine.p1);
          let reachedTop = false;
 
          if (isP1Base) {
-           if (s.chair.progress >= 0.46 && s.chair.progress <= 0.52) {
+           if (s.chair.progress >= 0.46 && s.chair.progress <= 0.53) {
              reachedTop = true;
            }
          } else {
-           if (s.chair.progress >= 0.96 || s.chair.progress <= 0.02) {
+           if (s.chair.progress >= 0.96 || s.chair.progress <= 0.03) {
              reachedTop = true;
            }
          }
          
          if (reachedTop) { 
-            s.chair.passenger = null;
+            if (s.chair.passengers) {
+              const idx = s.chair.passengers.indexOf(s);
+              if (idx !== -1) s.chair.passengers.splice(idx, 1);
+            }
+            if (s.chair.passenger === s) {
+              s.chair.passenger = (s.chair.passengers && s.chair.passengers.length > 0) ? s.chair.passengers[0] : null;
+            }
             s.chair = null;
             s.state = 'skiing';
             

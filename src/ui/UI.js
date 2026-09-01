@@ -622,7 +622,7 @@ export class UI {
       • <b>Scroll Wheel:</b> Zoom In/Out<br>
       • <b>Arrow Keys:</b> Pan View (Shift for slow)<br><br>
       <b>Editor Tips</b><br>
-      • <b>Chairlifts:</b> Click once for start, again for end<br>
+      • <b>Chairlifts & Trams:</b> Click base station, then summit terminal<br>
       • <b>River:</b> Click source (top), then mouth (bottom)<br>
       • <b>Ski Mode:</b> Drop a skier to test your mountain!
     `;

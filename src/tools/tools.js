@@ -914,6 +914,20 @@ export const TOOLS = {
     isBrush: false,
     category: 'Skiing',
     isChairlift: true,
+    liftType: 'chairlift',
+    apply() { /* no-op — handled externally */ },
+  },
+
+  tram: {
+    name: 'Aerial Tram',
+    icon: '🚠',
+    color: '#f59e0b',
+    cursor: 'crosshair',
+    isBrush: false,
+    category: 'Skiing',
+    isTram: true,
+    isChairlift: true,
+    liftType: 'tram',
     apply() { /* no-op — handled externally */ },
   },
   

@@ -330,7 +330,8 @@ async function doSaveMap(forcePicker = false) {
     })),
     chairlifts: chairlifts.lines.map(l => ({ 
       p1: { x: l.p1.x, y: l.p1.y, z: l.p1.z }, 
-      p2: { x: l.p2.x, y: l.p2.y, z: l.p2.z } 
+      p2: { x: l.p2.x, y: l.p2.y, z: l.p2.z },
+      type: l.type || 'chairlift'
     })),
     rivers: rivers.rivers.map(r => ({
       p1: { x: r.p1.x, y: r.p1.y, z: r.p1.z },
@@ -445,12 +446,13 @@ function loadMapData(data) {
     boulders.loadBoulders(data.boulders, seaLevel);
   }
 
-  // Restore Chairlifts
+  // Restore Chairlifts & Aerial Trams
   if (data.chairlifts) {
     data.chairlifts.forEach(lift => {
       chairlifts.buildLine(
         new THREE.Vector3(lift.p1.x, lift.p1.y, lift.p1.z),
-        new THREE.Vector3(lift.p2.x, lift.p2.y, lift.p2.z)
+        new THREE.Vector3(lift.p2.x, lift.p2.y, lift.p2.z),
+        { type: lift.type || 'chairlift' }
       );
     });
   }
@@ -564,14 +566,17 @@ function handleInteractStart(e) {
     skiers.spawn(brush.intersectionPoint.x, brush.intersectionPoint.z);
   }
 
-  if (tool.isChairlift) {
+  if (tool.isChairlift || tool.isTram) {
     if (!chairliftStartPoint) {
       chairliftStartPoint = brush.intersectionPoint.clone();
       brush.updateCursorColor('#e63946');
-      ui.showChairliftHint('🚡 Chairlift base set! Now click the top station location.');
+      const liftName = tool.name || (tool.isTram ? 'Aerial Tram' : 'Chairlift');
+      const icon = tool.icon || (tool.isTram ? '🚠' : '🚡');
+      ui.showChairliftHint(`${icon} ${liftName} base set! Now click the summit station location.`);
     } else {
       const endPoint = brush.intersectionPoint.clone();
-      chairlifts.buildLine(chairliftStartPoint, endPoint);
+      const liftType = tool.liftType || (tool.isTram ? 'tram' : 'chairlift');
+      chairlifts.buildLine(chairliftStartPoint, endPoint, { type: liftType });
       chairliftStartPoint = null;
       brush.updateCursorColor(tool.color);
       ui.showChairliftHint(null);
