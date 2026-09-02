@@ -663,24 +663,24 @@ export class UI {
         <div class="tip-tiers-section">
           <div class="tip-section-label">Select a Donation Amount</div>
           <div class="tip-tiers-grid">
-            <button class="tip-tier-card" data-amount="3">
+            <button class="tip-tier-card active" data-amount="1">
               <span class="tip-tier-emoji">🟢</span>
-              <span class="tip-tier-price">$3</span>
+              <span class="tip-tier-price">$1</span>
               <span class="tip-tier-title">Green Circle</span>
             </button>
-            <button class="tip-tier-card active" data-amount="5">
+            <button class="tip-tier-card" data-amount="3">
               <span class="tip-tier-emoji">🟦</span>
-              <span class="tip-tier-price">$5</span>
+              <span class="tip-tier-price">$3</span>
               <span class="tip-tier-title">Blue Square</span>
             </button>
-            <button class="tip-tier-card" data-amount="10">
+            <button class="tip-tier-card" data-amount="5">
               <span class="tip-tier-emoji" style="transform: rotate(45deg); transform-origin: center center;">⬛</span>
-              <span class="tip-tier-price">$10</span>
+              <span class="tip-tier-price">$5</span>
               <span class="tip-tier-title">Black Diamond</span>
             </button>
-            <button class="tip-tier-card" data-amount="12">
+            <button class="tip-tier-card" data-amount="8">
               <span style="display:flex;flex-direction:row;"><span class="tip-tier-emoji" style="transform: rotate(45deg); transform-origin: center center;">⬛</span><span class="tip-tier-emoji" style="transform: rotate(45deg); translateX:5px; transform-origin: center center; translate: 2px;">⬛</span></span>
-              <span class="tip-tier-price">$12</span>
+              <span class="tip-tier-price">$8</span>
               <span class="tip-tier-title">Double Black Diamond</span>
             </button>
           </div>

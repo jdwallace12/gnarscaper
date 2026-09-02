@@ -42,8 +42,8 @@ export class SceneManager {
 
     // Camera
     this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.5, 3000);
-    this.camera.position.set(90, 120, 180);
-    this.camera.lookAt(0, 0, 0);
+    this.camera.position.set(105, 140, 205);
+    this.camera.lookAt(0, 15, 0);
 
     // Controls
     this.controls = new OrbitControls(this.camera, canvas);
@@ -55,7 +55,7 @@ export class SceneManager {
     this.controls.zoomSpeed = 2.5;
     this.controls.panSpeed = 2.0;
     this.controls.screenSpacePanning = false;
-    this.controls.target.set(0, 0, 0);
+    this.controls.target.set(0, 15, 0);
     this.controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
     this.controls.listenToKeyEvents(window);
     this.controls.keyPanSpeed = 50.0;
@@ -180,10 +180,10 @@ export class SceneManager {
       this.camera.updateProjectionMatrix();
       this.camera.updateMatrixWorld();
     } else {
-      this.camera.position.set(90, 120, 180);
-      this.controls.target.set(0, 0, 0);
+      this.camera.position.set(105, 140, 205);
+      this.controls.target.set(0, 15, 0);
       this.camera.up.set(0, 1, 0);
-      this.camera.lookAt(0, 0, 0);
+      this.camera.lookAt(0, 15, 0);
       this.controls.update();
     }
   }
@@ -191,10 +191,10 @@ export class SceneManager {
   /** Reset camera to starting position */
   resetCamera() {
     if (this._skierMode) return;
-    this.controls.target.set(0, 0, 0);
-    this.camera.position.set(90, 120, 180);
+    this.controls.target.set(0, 15, 0);
+    this.camera.position.set(105, 140, 205);
     this.camera.up.set(0, 1, 0);
-    this.camera.lookAt(0, 0, 0);
+    this.camera.lookAt(0, 15, 0);
     this.controls.update();
     this.camera.updateProjectionMatrix();
   }

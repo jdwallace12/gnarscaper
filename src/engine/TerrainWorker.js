@@ -118,69 +118,96 @@ function _generateInitialTerrain() {
   const seedX = Math.random() * 1000;
   const seedZ = Math.random() * 1000;
   const seedWarp = Math.random() * 1000;
+  const seedLake = Math.random() * 1000;
 
-  // Choose a random diagonal direction for the mountain range
+  // Mountain spine diagonal and offset
   const isDiagonalA = Math.random() > 0.5;
-  const spineThickness = 0.35 + Math.random() * 0.1;
+  const spineOffset = (Math.random() - 0.5) * 0.15;
+  const spineThickness = 0.38 + Math.random() * 0.08;
 
   for (let z = 0; z < res; z++) {
     for (let x = 0; x < res; x++) {
       const nx = x / res;
       const nz = z / res;
 
-      // ---- Domain warping for organic distortion ----
-      const warpScale = 3.0;
-      const warpStrength = 0.15;
+      // ---- Domain warping for organic, natural distortion ----
+      const warpScale = 2.6;
+      const warpStrength = 0.16;
       const warpX = fbm((nx + seedWarp) * warpScale, (nz + seedWarp) * warpScale, 3, 2.0, 0.5);
       const warpZ = fbm((nx + seedWarp + 100) * warpScale, (nz + seedWarp + 100) * warpScale, 3, 2.0, 0.5);
       const wnx = nx + warpX * warpStrength;
       const wnz = nz + warpZ * warpStrength;
 
-      // ---- Continuous Mountain Spine ----
-      // Warp the distance calculation so the mountain range snakes naturally
-      const spineWarp = fbm(wnx * 2.0, wnz * 2.0, 4, 2.0, 0.5) * 0.3;
+      // ---- Continuous Mountain Spine & Segmentation ----
+      const spineWarp = fbm(wnx * 1.8, wnz * 1.8, 4, 2.0, 0.5) * 0.32;
       
-      let spineDist = 0;
+      let spineSignedDist = 0;
+      let alongSpine = 0;
       if (isDiagonalA) {
-        spineDist = Math.abs(nx - nz + spineWarp) / Math.SQRT2;
+        spineSignedDist = (nx - nz + spineOffset + spineWarp) / Math.SQRT2;
+        alongSpine = (nx + nz) / Math.SQRT2;
       } else {
-        spineDist = Math.abs(nx + nz - 1 + spineWarp) / Math.SQRT2;
+        spineSignedDist = (nx + nz - 1 + spineOffset + spineWarp) / Math.SQRT2;
+        alongSpine = (nx - nz + 1) / Math.SQRT2;
       }
       
-      // Smooth falloff from the spine (1 at center, 0 at edges)
-      const falloff = Math.max(0, 1 - spineDist / spineThickness);
+      const spineDist = Math.abs(spineSignedDist);
       
-      // Modulate the spine height with noise to create distinct peaks and passes along the range
-      const peakNoise = fbm((wnx + seedX) * 2.5, (wnz + seedZ) * 2.5, 3, 2.0, 0.5);
-      const envelope = falloff * falloff * (3 - 2 * falloff) * (0.5 + peakNoise * 0.5);
-
-      // ---- Layered noise ----
-      const baseScale = 3.5;
-      const base = fbm((wnx + seedX) * baseScale, (wnz + seedZ) * baseScale, 6, 2.0, 0.5);
-
-      const ridgeScale = 4.0;
-      const ridged = ridgedNoise((wnx + seedX) * ridgeScale, (wnz + seedZ) * ridgeScale, 5, 2.2, 0.5);
-
-      const detailScale = 12.0;
-      const detail = fbm((wnx + seedX) * detailScale, (wnz + seedZ) * detailScale, 4, 2.0, 0.45);
-
-      const ridgeBlend = envelope * 0.7 + 0.3;
-      const mainNoise = base * (1 - ridgeBlend) + ridged * ridgeBlend;
-
-      // Base terrain: higher average elevation with more amplitude for rolling green hills
-      const baseTerrainHeight = (base + 0.3) * 40.0;
+      // Mountain massif falloff: 1 at center spine, smooth S-curve down to 0 at spine edges
+      const t = Math.min(1.0, spineDist / spineThickness);
+      const mountainFalloff = 0.5 * (1 + Math.cos(t * Math.PI));
       
-      // Scale height: taller mountains with dramatic relief
-      const mountainHeight = (mainNoise * 90.0 + detail * 15.0);
-
-      // Combine base terrain with mountain spine
-      heightmap[z * res + x] = baseTerrainHeight + mountainHeight * falloff;
+      // Spine Segmentation: breaks the continuous spine into distinct massifs with deep cross-cutting passes and valleys
+      const spinePassNoise = fbm((alongSpine + seedX * 0.005) * 3.0, (wnx + wnz) * 1.4, 3, 2.0, 0.5);
+      const spineCluster = Math.min(1.0, Math.max(0.0, (spinePassNoise + 0.3) / 0.65)); // 0 in deep gaps, 1 on major mountain massifs
       
+      // ---- Noise layers ----
+      // 1. Broad rolling hills noise (creates undulating green topography across lowlands and passes)
+      const hillNoise = fbm((wnx + seedX) * 2.8, (wnz + seedZ) * 2.8, 5, 2.0, 0.5);
+      
+      // 2. Mountain ridged noise and peak modulation
+      const ridged = ridgedNoise((wnx + seedX) * 2.8, (wnz + seedZ) * 2.8, 5, 2.2, 0.5);
+      const peakNoise = fbm((wnx + seedX) * 2.0, (wnz + seedZ) * 2.0, 3, 2.0, 0.5);
+      const detail = fbm((wnx + seedX) * 8.0, (wnz + seedZ) * 8.0, 4, 2.0, 0.45);
+      
+      // 3. Lake basin carving noise (creates organic water bodies, lowland lakes, and alpine fjords)
+      const lakeNoise = fbm((wnx + seedLake) * 2.2, (wnz + seedLake) * 2.2, 4, 2.0, 0.5);
+
+      // ---- Biome / Elevation Synthesis ----
+      
+      // 1. Lowland Rolling Green Hills (ranges ~2 to 20 height units in foothills and valley passes)
+      const rollingHills = (hillNoise * 0.5 + 0.5) * 18.0 + 2.0;
+      
+      // 2. Lake and Water Depression (creates expansive lowland lakes, bays, and alpine fjord channels)
+      const lowlandWeight = Math.max(0, 1.0 - mountainFalloff * 1.4);
+      const passWaterWeight = Math.max(0, 1.0 - spineCluster * 1.5) * mountainFalloff;
+      const totalWaterWeight = Math.max(lowlandWeight, passWaterWeight);
+      const lakeDepression = (lakeNoise + 0.16) * 22.0 * totalWaterWeight;
+
+      // 3. Elevated Mountain Massif & High Shoulders (lifts active massifs)
+      const massifBase = Math.pow(mountainFalloff, 1.3) * 56.0 * (0.2 + 0.8 * spineCluster);
+
+      // 4. Alpine Mountain Summits & Ridges
+      const ridgeEnvelope = mountainFalloff * (0.6 + peakNoise * 0.4) * spineCluster;
+      const ridgeBlend = ridgeEnvelope * 0.6 + 0.2;
+      const mountainCore = (hillNoise * 0.5 + 0.5) * (1 - ridgeBlend) + ridged * ridgeBlend;
+      const mountainSummits = (mountainCore * 76.0 + detail * 10.0) * mountainFalloff * (0.15 + 0.85 * spineCluster);
+
+      // 5. Selective Jagged Alpine Horns & Crags (sharpens specific peaks on prominent massifs)
+      const jaggedMask = Math.max(0, fbm((wnx + seedX + 73) * 2.2, (wnz + seedZ + 73) * 2.2, 3, 2.0, 0.5) + 0.1);
+      const sharpRidge = ridgedNoise((wnx + seedX) * 4.6, (wnz + seedZ) * 4.6, 5, 2.2, 0.5);
+      const jaggedCrags = Math.pow(Math.max(0, sharpRidge), 1.8) * 28.0 * jaggedMask * mountainFalloff * spineCluster;
+
+      // Combined raw elevation
+      const rawHeight = (rollingHills - lakeDepression) + massifBase + mountainSummits + jaggedCrags;
+
       // ---- Edge falloff ---- 
-      // Smooth terrain to zero at map boundaries
+      // Smooth terrain gently to sea level at map boundaries
       const edgeX = 1 - Math.pow(2 * nx - 1, 6);
       const edgeZ = 1 - Math.pow(2 * nz - 1, 6);
-      heightmap[z * res + x] *= Math.min(edgeX, edgeZ);
+      const edgeFalloff = Math.min(edgeX, edgeZ);
+      
+      heightmap[z * res + x] = rawHeight * edgeFalloff;
     }
   }
 }
