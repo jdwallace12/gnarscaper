@@ -61,8 +61,8 @@ export class PlayerSkier {
     this._camPosVec = new THREE.Vector3();
     this._lookAtVec = new THREE.Vector3();
 
-    // Dual Ski Carving Trails (clean crisp powder blue shadow grooves)
-    this._trailMat = new THREE.LineBasicMaterial({ color: 0x6897c4, transparent: true, opacity: 0.88 });
+    // Dual Ski Carving Trails (deep carved alpine powder grooves with ambient shadow)
+    this._trailMat = new THREE.LineBasicMaterial({ color: 0x5a8ab8, transparent: true, opacity: 0.92 });
     this._leftTrail = null;
     this._rightTrail = null;
     this._leftTrailPoints = [];
@@ -75,32 +75,51 @@ export class PlayerSkier {
     this._skinMat = new THREE.MeshStandardMaterial({ color: 0xf4d4b0, roughness: 0.8 });
     this._skiMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.3, metalness: 0.2 }); // Yellow skis
 
-    // Water splash particles
+    // Water splash & twin rooster tail spray particles
     this.seaLevel = -1;
     this._splashParticles = [];
     this._splashMat = new THREE.MeshStandardMaterial({
-      color: 0x4fc3f7,
+      color: 0x90e0ef,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.85,
       roughness: 0.1,
-      metalness: 0.3,
+      metalness: 0.15,
     });
-    this._splashGeo = new THREE.SphereGeometry(0.06, 4, 4);
+    this._splashGeo = new THREE.SphereGeometry(0.08, 5, 5);
     this._splashPool = [];
-    this._splashPoolSize = 80;
+    this._splashPoolSize = 250;
     this._splashTimer = 0;
+    this._roosterTimer = 0;
+
+    // Surfing mechanics & tricks
+    this.isSurfing = false;
+    this._surfStreak = 0;
+    this._lastSurfTrickTime = 0;
+    this._lastWaveLipLaunchTime = 0;
     
-    // Snow powder particles (low translucent powder haze)
+    // Dual-Stage Snow Powder System:
+    // 1. Billowing volumetric powder clouds
     this._snowMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.16,
+      opacity: 0.22,
       roughness: 1.0,
       metalness: 0.0,
     });
     this._snowPool = [];
-    this._snowPoolSize = 200;
+    this._snowPoolSize = 250;
     this._snowTimer = 0;
+
+    // 2. High-velocity crystalline ice shard spray
+    this._iceMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.88,
+      roughness: 0.15,
+      metalness: 0.2,
+    });
+    this._icePool = [];
+    this._icePoolSize = 180;
 
     this._onWater = false;
     this.water = null; // Reference to Water instance for wave surfing
@@ -333,9 +352,15 @@ export class PlayerSkier {
     // Check if we are actually on snow using dynamic snow cover
     const isOnSnow = this.terrain.getSnowCover(this.wx, this.wz) > 0.05;
 
-    // On water the surface is flat — zero out terrain gradient so the skier
-    // doesn't get pushed around by the terrain shape underneath the water
-    if (overWater && this.grounded) {
+    // On water, sample wave slope gradient so the skier rides down wave faces!
+    let waveSlopeDot = 0;
+    let waveGradMag = 0;
+    if (overWater && this.grounded && this.water) {
+      const waveGrad = this.water.getWaveGradient(this.wx, this.wz);
+      gradX = waveGrad.gradX;
+      gradZ = waveGrad.gradZ;
+      waveGradMag = Math.sqrt(gradX * gradX + gradZ * gradZ);
+    } else if (overWater && this.grounded) {
       gradX = 0;
       gradZ = 0;
     }
@@ -343,14 +368,13 @@ export class PlayerSkier {
     const slopeDot = Math.sin(this.heading) * gradX + Math.cos(this.heading) * gradZ;
     const forwardSpeed = this.vx * Math.sin(this.heading) + this.vz * Math.cos(this.heading);
 
-    // Transition to climbing mode:
-    // If player is grounded, pressing forward, facing uphill on a slope, and has very low speed uphill (or is sliding back)
-    if (this.grounded && this._keys.forward && slopeDot > 0.03 && forwardSpeed < 1.5) {
+    // Transition to climbing mode (only on land/snow, never on water):
+    if (this.grounded && !overWater && this._keys.forward && slopeDot > 0.03 && forwardSpeed < 1.5) {
       this.isClimbing = true;
     }
     // Transition out of climbing mode:
     if (this.isClimbing) {
-      if (!this._keys.forward || slopeDot <= 0.01 || !this.grounded) {
+      if (!this._keys.forward || slopeDot <= 0.01 || !this.grounded || overWater) {
         this.isClimbing = false;
       }
     }
@@ -377,7 +401,7 @@ export class PlayerSkier {
       this.speed = climbSpeed;
       this.climbPhase = (this.climbPhase || 0) + dt * 10.0;
 
-      // Trigger custom snow powder particles exactly when the skier's feet plant on each step
+      // Trigger custom snow powder puffs exactly when the skier's feet plant on each step
       const stepInterval = Math.PI;
       const currentStep = Math.floor(this.climbPhase / stepInterval);
       if (currentStep !== this._lastClimbStep) {
@@ -385,29 +409,51 @@ export class PlayerSkier {
         const footSide = (currentStep % 2 === 0) ? 1 : -1;
         const sinH = Math.sin(this.heading);
         const cosH = Math.cos(this.heading);
-        // foot world position
         const fx = this.wx + cosH * (footSide * 0.1) - sinH * 0.1;
         const fz = this.wz - sinH * (footSide * 0.1) - cosH * 0.1;
 
-        // Emit snow puff
+        // Emit small footstep powder puff
         for (let i = 0; i < 2; i++) {
-          this._emitSnow(fx, this.y, fz);
+          this._emitSnowPuff(fx, this.y, fz, 0, false);
         }
       }
     } else {
-      // High-performance Downhill GS Carving Physics
+      // Downhill Gravity Acceleration (works on both snow mountain slopes and ocean wave faces!)
       this.vx -= gradX * gravity * dt;
       this.vz -= gradZ * gravity * dt;
 
+      // Hydrodynamic Surfing Push:
+      if (overWater && this.grounded && this.water) {
+        const waveVel = this.water.getWaveVelocity();
+        const surfPushAlignment = -(gradX * waveVel.vx + gradZ * waveVel.vz) / (waveVel.speed + 0.001);
+        if (surfPushAlignment > 0.03) {
+          const waveThrust = Math.min(surfPushAlignment * 22.0, 16.0);
+          this.vx += Math.sin(this.heading) * waveThrust * dt;
+          this.vz += Math.cos(this.heading) * waveThrust * dt;
+          this.isSurfing = true;
+          this._surfStreak = (this._surfStreak || 0) + dt;
+
+          if (this.speed > 3.6 && this._surfStreak < 0.6 && performance.now() - (this._lastSurfTrickTime || 0) > 2000) {
+            this._lastSurfTrickTime = performance.now();
+            if (this.onTrick) this.onTrick('WAVE DROP-IN 🏄', 150);
+          }
+        } else {
+          this.isSurfing = this.speed > 2.0;
+          if (!this.isSurfing) this._surfStreak = 0;
+        }
+      } else {
+        this.isSurfing = false;
+        this._surfStreak = 0;
+      }
+
       this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
 
-      // Dynamic steering control: turn rate scales smoothly for sweeping GS arcs
-      const turnAccel = 22.0; // High edge bite
+      // Dynamic steering control: turn rate scales smoothly for sweeping GS arcs and surf carves
+      const turnAccel = overWater ? 26.0 : 22.0; // Responsive carving
       const turnDamping = 0.92;
       
-      // Speed-dependent max angular velocity for authentic sweeping GS turns
-      const baseMaxTurn = 2.8;
-      const maxAngularVel = Math.max(1.6, baseMaxTurn - Math.min(this.speed * 0.04, 1.2));
+      const baseMaxTurn = overWater ? 3.2 : 2.8;
+      const maxAngularVel = Math.max(1.8, baseMaxTurn - Math.min(this.speed * 0.04, 1.2));
 
       this._steerInput = 0;
       if (this._keys.left) { this.angularVelocity += turnAccel * dt; this._steerInput = 1; }
@@ -419,80 +465,80 @@ export class PlayerSkier {
       // Track edge turn transitions for "carve pop" rebound acceleration
       const prevSteerDir = Math.sign(this._lastAngularVel || 0);
       const currSteerDir = Math.sign(this.angularVelocity);
-      if (prevSteerDir !== 0 && currSteerDir !== 0 && prevSteerDir !== currSteerDir && this.grounded && isOnSnow) {
-        // Edge switch rebound acceleration
-        const popBoost = Math.min(this.speed * 0.12, 3.0);
+      if (prevSteerDir !== 0 && currSteerDir !== 0 && prevSteerDir !== currSteerDir && this.grounded) {
+        const popBoost = Math.min(this.speed * (overWater ? 0.16 : 0.12), overWater ? 3.8 : 3.0);
         this.vx += Math.sin(this.heading) * popBoost;
         this.vz += Math.cos(this.heading) * popBoost;
+
+        if (overWater && this.speed > 3.8 && performance.now() - (this._lastSurfTrickTime || 0) > 1200) {
+          this._lastSurfTrickTime = performance.now();
+          if (this.onTrick) this.onTrick('CUTBACK 🏄', 150);
+        }
       }
       this._lastAngularVel = this.angularVelocity;
 
       this.heading += this.angularVelocity * dt;
 
       // Downhill alignment: gently rotate heading toward the fall line when not steering.
-      if (!this._keys.left && !this._keys.right && !overWater && !this.paragliding) {
+      if (!this._keys.left && !this._keys.right && !this.paragliding) {
         const gradMag = Math.sqrt(gradX * gradX + gradZ * gradZ);
-        if (gradMag > 0.01) {
+        if (gradMag > 0.012) {
           const fallHeading = Math.atan2(-gradX, -gradZ);
           let fallDiff = fallHeading - this.heading;
           while (fallDiff < -Math.PI) fallDiff += Math.PI * 2;
           while (fallDiff > Math.PI) fallDiff -= Math.PI * 2;
-          const alignStrength = Math.min(gradMag * 2.5, 1.2);
+          const alignStrength = Math.min(gradMag * (overWater ? 1.6 : 2.5), 1.2);
           this.heading += fallDiff * alignStrength * dt;
         }
       }
 
       // Edge Carving Grip: convert lateral slip into crisp carving velocity along the ski edge angle
-      if (this.speed > 0.1 && this.grounded && !overWater) {
+      if (this.speed > 0.1 && this.grounded) {
         const sinH = Math.sin(this.heading);
         const cosH = Math.cos(this.heading);
 
-        // Forward and lateral components of velocity relative to ski heading
         const vFwd = this.vx * sinH + this.vz * cosH;
-        const vLat = this.vx * cosH - this.vz * sinH; // perpendicular to heading
+        const vLat = this.vx * cosH - this.vz * sinH;
 
-        // Edge grip factor: on snow, ski edge cuts deep into slope
-        const edgeGripRate = isOnSnow ? 14.0 : 8.0; 
+        const edgeGripRate = overWater ? 16.0 : (isOnSnow ? 14.0 : 8.0); 
         
-        // Dampen lateral drift (sideslip) while transferring a portion of lateral kinetic energy into forward carve
         const newVLat = vLat * Math.max(0, 1.0 - edgeGripRate * dt);
-        const latEnergyTransferred = (Math.abs(vLat) - Math.abs(newVLat)) * 0.45;
+        const latEnergyTransferred = (Math.abs(vLat) - Math.abs(newVLat)) * (overWater ? 0.55 : 0.45);
         const newVFwd = vFwd + Math.sign(vFwd || 1) * latEnergyTransferred;
 
-        // Reconstruct velocity from carved forward and damped lateral vectors
         this.vx = newVFwd * sinH + newVLat * cosH;
         this.vz = newVFwd * cosH - newVLat * sinH;
+
+        if (overWater && Math.abs(this.angularVelocity) > 1.8 && this.speed > 4.5 && performance.now() - (this._lastSurfTrickTime || 0) > 1500) {
+          this._lastSurfTrickTime = performance.now();
+          if (this.onTrick) this.onTrick('BOTTOM TURN 🌊', 200);
+        }
       }
 
       // Forward push & GS Tuck (W or ArrowUp)
       if (this._keys.forward) {
-        const pushForce = (this.grounded && !isOnSnow) ? 10.0 : 15.0;
+        const pushForce = (this.grounded && !isOnSnow && !overWater) ? 10.0 : (overWater ? 18.0 : 15.0);
         this.vx += Math.sin(this.heading) * pushForce * dt;
         this.vz += Math.cos(this.heading) * pushForce * dt;
       }
     }
 
     // Camera pitch (W/S keys)
-    const pitchSpeed = 1.5; // radians/sec
+    const pitchSpeed = 1.5;
     if (this._keys.lookUp) this.cameraPitch = Math.min(this.cameraPitch + pitchSpeed * dt, 1.0);
     if (this._keys.lookDown) this.cameraPitch = Math.max(this.cameraPitch - pitchSpeed * dt, -0.5);
-    // Gently return to neutral when not pressing
     if (!this._keys.lookUp && !this._keys.lookDown) {
       this.cameraPitch *= 0.92;
     }
 
     // Aerodynamic Drag & Speed Cap:
-    // 1 internal speed unit = 5 mph
-    // In full GS tuck stance (pressing W / Forward), top speed is capped at ~95-100 mph (19.0-20.0 internal speed).
-    // In normal upright stance, top speed tops out at ~75-80 mph (15.0-16.0 internal speed).
     const isTucking = this._keys.lookUp || (this._keys.forward && this.grounded);
     const maxTopSpeed = isTucking ? 20.0 : 16.0;
 
     let friction = baseFriction;
     if (this._keys.brake) {
-      friction = 0.86; // Strong edge check / hockey stop brake
+      friction = 0.86; // Strong hockey stop / edge brake
     } else {
-      // Progressive aerodynamic drag scaling as speed approaches top limit
       if (this.speed > 8.0) {
         const speedRatio = Math.min(1.4, this.speed / maxTopSpeed);
         const dragFactor = 1.0 - (speedRatio * speedRatio * 0.035);
@@ -501,14 +547,17 @@ export class PlayerSkier {
     }
 
     if (this.grounded && !overWater && !isOnSnow) {
-      friction *= 0.985; // Slightly higher friction on grass/dirt/rock
+      friction *= 0.985;
+    }
+
+    if (overWater && this.grounded && this.isSurfing) {
+      friction = Math.max(friction, 0.998);
     }
 
     this.vx *= friction;
     this.vz *= friction;
     this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
 
-    // Hard top speed clamp (100 mph absolute ceiling in GS tuck)
     if (this.speed > maxTopSpeed) {
       const clampRatio = maxTopSpeed / this.speed;
       this.vx *= clampRatio;
@@ -520,17 +569,17 @@ export class PlayerSkier {
     this.wx += this.vx * dt;
     this.wz += this.vz * dt;
 
-    // Terrain height at new position (re-sample after movement)
+    // Terrain height at new position
     const rawTerrainH2 = this.terrain.getInterpolatedHeight(this.wx, this.wz);
     
-    // Wave height at skier position (if water system is available)
+    // Wave height at skier position
     const waveOffset = this.water ? this.water.getWaveHeight(this.wx, this.wz) : 0;
     const waveH = this.seaLevel + waveOffset;
     
-    // Deep snow powder sinking calculation
+    // Deep snow powder sinking calculation (natural sinking into fresh powder)
     if (this.grounded && !overWater && isOnSnow) {
       const snowCover = this.terrain.getSnowCover(this.wx, this.wz);
-      const maxSink = 0.14; // Skis sink up to 0.14 units into deep powder
+      const maxSink = 0.16; // Skis settle realistically into deep powder
       const sinkTarget = maxSink * Math.min(1.0, Math.max(0, (snowCover - 0.05) / 0.8));
       this._currentSink = (this._currentSink || 0) * 0.9 + sinkTarget * 0.1;
     } else {
@@ -540,77 +589,84 @@ export class PlayerSkier {
     const terrainH = Math.max(rawTerrainH2, overWater ? waveH : -Infinity);
     const effectiveGroundY = terrainH - (this._currentSink || 0);
 
-    // Water detection: terrain at or below sea level means we're on water
+    // Water detection
     this._onWater = this.grounded && rawTerrainH2 <= this.seaLevel;
 
     // Water Planing & Slow Sinking Mechanics:
-    // Lowers sink threshold to 8 mph (speed * 5.0 = mph, so 8 mph = 1.6 internal speed)
-    const sinkThreshold = 8.0 / 5.0;
+    const sinkThreshold = 6.0 / 5.0;
 
     if (this._onWater && this.grounded) {
-      if (this.speed < sinkThreshold) {
-        // Slow speed on water — start or continue slow sinking!
+      if (this.speed < sinkThreshold && !this.isSurfing) {
         this._sinking = true;
         this._sinkTimer = (this._sinkTimer || 0) + dt;
 
-        // Gently decelerate
         this.vx *= 0.96;
         this.vz *= 0.96;
         this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
 
-        // Sink below water surface over 2.5 seconds
-        const sinkT = Math.min(1.0, this._sinkTimer / 2.5); // 0→1 over 2.5s
+        const sinkT = Math.min(1.0, this._sinkTimer / 2.5);
         this.y = waveH - (sinkT * sinkT * 1.5);
 
-        // Despawn if submerged after 2.5 seconds
         if (this._sinkTimer > 2.5) {
           this.active = false;
           return false;
         }
 
-        // Emit splash bubbles while sinking
         this._splashTimer += dt;
         if (this._splashTimer >= 0.08) {
           this._splashTimer -= 0.08;
           this._emitSplash(this.wx, waveH, this.wz);
         }
       } else {
-        // Planing on water with full control!
         this._sinking = false;
         this._sinkTimer = 0;
 
-        // Light water drag
-        const waterDrag = 0.997;
+        const waterDrag = this.isSurfing ? 0.999 : 0.997;
         this.vx *= waterDrag;
         this.vz *= waterDrag;
         this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
 
-        // Emit water splash particles behind skis
-        this._splashTimer += dt;
-        const emitInterval = Math.max(0.01, 0.06 - this.speed * 0.003);
-        while (this._splashTimer >= emitInterval) {
-          this._splashTimer -= emitInterval;
-          const count = this.speed > 5 ? 3 : (this.speed > 2 ? 2 : 1);
-          for (let i = 0; i < count; i++) {
-            this._emitSplash(this.wx, waveH, this.wz);
-          }
+        // Emit dynamic twin rooster tail spray behind left and right skis
+        this._roosterTimer += dt;
+        const emitInterval = Math.max(0.008, 0.032 - this.speed * 0.0015);
+        while (this._roosterTimer >= emitInterval) {
+          this._roosterTimer -= emitInterval;
+          const carveIntensity = Math.abs(this.angularVelocity || 0);
+          this._emitRoosterTail(this.wx, waveH, this.wz, -1, carveIntensity);
+          this._emitRoosterTail(this.wx, waveH, this.wz, 1, carveIntensity);
+        }
+
+        if (this.speed > 8.0 && (this._surfStreak || 0) > 2.0 && performance.now() - (this._lastSurfTrickTime || 0) > 2200) {
+          this._lastSurfTrickTime = performance.now();
+          if (this.onTrick) this.onTrick('BARREL CARVE ⚡', 250);
         }
       }
     } else {
       this._splashTimer = 0;
+      this._roosterTimer = 0;
       this._sinking = false;
       this._sinkTimer = 0;
     }
 
-    if (this.grounded && this.speed > 1.0 && isOnSnow) {
-      // Emit continuous translucent powder spray behind ski tails on snow
+    // Dual-Stage Snow Powder Spray (Volumetric Puffs + High-Speed Crystalline Shards)
+    if (this.grounded && this.speed > 0.8 && isOnSnow) {
       this._snowTimer += dt;
-      const emitInterval = 0.02; 
+      const carveIntensity = Math.abs(this.angularVelocity || 0);
+      const isBraking = !!this._keys.brake;
+      const emitInterval = Math.max(0.01, 0.032 - Math.min(this.speed * 0.0015 + carveIntensity * 0.008, 0.022)); 
       while (this._snowTimer >= emitInterval) {
         this._snowTimer -= emitInterval;
-        const count = (Math.abs(this.angularVelocity) > 0.3 || this.speed > 5.0) ? 3 : 2;
-        for (let i = 0; i < count; i++) {
-          this._emitSnow(this.wx, terrainH, this.wz);
+        // 1. Billowing soft volumetric powder clouds
+        const puffCount = isBraking ? 4 : (carveIntensity > 0.4 || this.speed > 6.0 ? 3 : 2);
+        for (let i = 0; i < puffCount; i++) {
+          this._emitSnowPuff(this.wx, terrainH, this.wz, carveIntensity, isBraking);
+        }
+        // 2. High-velocity crystalline ice shard spray
+        if (carveIntensity > 0.25 || isBraking || this.speed > 4.5) {
+          const shardCount = isBraking ? 5 : (carveIntensity > 0.6 ? 4 : 2);
+          for (let i = 0; i < shardCount; i++) {
+            this._emitIceShard(this.wx, terrainH, this.wz, carveIntensity, isBraking);
+          }
         }
       }
     } else {
@@ -622,23 +678,32 @@ export class PlayerSkier {
       // Manual Jump
       if (this._keys.jump) {
         this.grounded = false;
-        // Launch with upward velocity for an intentional jump
         const slopeVy = Math.max((effectiveGroundY - this.y) / dt, 0);
-        this.vy = slopeVy + 6.0; 
-        this._keys.jump = false; // Consume the jump press
+        const extraPop = this._onWater ? 7.5 : 6.0;
+        this.vy = slopeVy + extraPop; 
+        this._keys.jump = false;
+        if (this._onWater && this.speed > 3.0) {
+          if (this.onTrick) this.onTrick('WAVE AIR 🚀', 200);
+        }
       } else {
-        // Calculate where physics would put us if we went airborne this frame
         const ballisticVy = this.vy - gravity * dt;
         const ballisticY = this.y + ballisticVy * dt;
 
-        // Skier only catches air over significant terrain drop-offs/cliffs or steep crests (prevents micro-bouncing)
+        // Wave Lip Launch Detection:
+        const upwardSlopeVy = (effectiveGroundY - this.y) / dt;
+        const isLaunchingOffWaveLip = this._onWater && this.speed > 3.5 && upwardSlopeVy > 2.2 && (ballisticY - effectiveGroundY > 0.2);
+
         const terrainDrop = ballisticY - effectiveGroundY;
-        if (terrainDrop > 0.65 && this.speed > 6.0) {
+        if ((terrainDrop > 0.65 && this.speed > 6.0) || isLaunchingOffWaveLip) {
           this.grounded = false;
-          this.vy = ballisticVy;
-          this.y = ballisticY;
+          this.vy = isLaunchingOffWaveLip ? (upwardSlopeVy + 3.0) : ballisticVy;
+          this.y = isLaunchingOffWaveLip ? (this.y + this.vy * dt) : ballisticY;
+
+          if (isLaunchingOffWaveLip && performance.now() - (this._lastWaveLipLaunchTime || 0) > 1500) {
+            this._lastWaveLipLaunchTime = performance.now();
+            if (this.onTrick) this.onTrick('WAVE LIP AIR 🚀', 300);
+          }
         } else {
-          // Stick to the ground smoothly — snow suspension dampens sharp upward slope acceleration
           const targetVy = (effectiveGroundY - this.y) / dt;
           this.vy = THREE.MathUtils.lerp(this.vy, Math.min(targetVy, 6.0), 0.35);
           this.y = effectiveGroundY;

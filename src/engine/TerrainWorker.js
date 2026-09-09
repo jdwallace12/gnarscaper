@@ -10,10 +10,11 @@ const GRASS_HIGH = new THREE.Color(0x2d5a27);
 const ALPINE_MEADOW = new THREE.Color(0x6b7f4a);
 const ROCK = new THREE.Color(0x6b6b6b);
 const ROCK_DARK = new THREE.Color(0x4a4a4a);
-const SNOW_SUNLIT = new THREE.Color(0xffffff); // Pure radiant brilliant white
-const SNOW_MID = new THREE.Color(0xf5f9fe);    // Bright crisp snow white
-const SNOW_SHADOW = new THREE.Color(0xdce9f5); // Soft clean light powder blue
-const SNOW_DEEP_SHADOW = new THREE.Color(0xb5d2ee); // Crisp alpine sky blue shadow
+const SNOW_SUNLIT = new THREE.Color(0xffffff);      // Pure radiant crystalline white
+const SNOW_WARM_CREST = new THREE.Color(0xfffcf7);  // Warm sun-scattered crest highlight
+const SNOW_MID = new THREE.Color(0xf2f7fc);         // Clean crisp alpine powder
+const SNOW_SHADOW = new THREE.Color(0xcfe2f5);      // Soft sky-reflected lavender-cerulean
+const SNOW_DEEP_SHADOW = new THREE.Color(0x9fc3ea); // Rich alpine couloir indigo-blue
 const LUSH_GRASS = new THREE.Color(0x2d5a27);
 
 let size = 200;
@@ -28,7 +29,7 @@ const _tmpBase = new THREE.Color();
 const _tmpResult = new THREE.Color();
 const _tmpSnow = new THREE.Color();
 
-function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0, curvature = 0, grassAmount = 0) {
+function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0, curvature = 0, grassAmount = 0, gx = 0, gz = 0, gradX = 0, gradZ = 0) {
   const base = _tmpBase;
   const result = _tmpResult;
   
@@ -68,38 +69,50 @@ function _colorForHeight(h, seaLevel, steepness = 0, snowAmount = 0, curvature =
 
   const packFactor = currentSnowPack / 100.0;
   
-  // Base elevation where snow line starts. 
-  // At 50% slider, this is exactly the original seaLevel + 57!
-  const baseElevation = (seaLevel + 57) - (packFactor - 0.5) * 40.0;
+  // Base elevation where snow line starts.
+  const baseElevation = (seaLevel + 57) - (packFactor - 0.5) * 44.0;
   
-  const flatness = Math.max(0, 1.0 - steepness * 2.0);
+  // Organic fractal variation in snowline elevation (natural jagged snow fingers)
+  const noiseOffset = fbm(gx * 0.045, gz * 0.045, 3, 2.0, 0.5) * 8.0 - 4.0;
+
+  const flatness = Math.max(0, 1.0 - steepness * 1.8);
+  const windScour = curvature < 0 ? curvature * Math.min(1.0, steepness * 2.5) : curvature;
   
-  // Ridges/crests (curvature < 0) only get wind-scoured if they are steep.
-  // Smooth peaks or ridges (low steepness) bypass the wind-scour penalty!
-  const windScour = curvature < 0 ? curvature * Math.min(1.0, steepness * 3.0) : curvature;
+  // Concavity score helps snow accumulate lower in couloirs and hollows
+  const score = flatness * 0.45 + windScour * 0.55;
+  const effectiveHeight = h + score * 16.0 + noiseOffset;
   
-  // Concavity and flatness score helps snow accumulate lower in couloirs/valleys,
-  // while convex ridges push the snow line higher.
-  const score = flatness * 0.4 + windScour * 0.6;
-  
-  // Adjust height based on local terrain features
-  const effectiveHeight = h + score * 15.0;
-  
-  // Natural snow scales smoothly over a 15-unit transition zone
-  const naturalSnow = Math.min(1.0, Math.max(0, (effectiveHeight - baseElevation) / 15.0));
+  // Natural snow scales smoothly over transition zone
+  let naturalSnow = Math.min(1.0, Math.max(0, (effectiveHeight - baseElevation) / 14.0));
+
+  // Steep cliff face sloughing: slopes steeper than 45° shed powder to expose rock bands
+  if (steepness > 0.75) {
+    const sloughFactor = Math.min(1.0, (steepness - 0.75) / 0.55);
+    const shelfProtection = Math.max(0, curvature * 0.8);
+    naturalSnow *= Math.max(shelfProtection, 1.0 - sloughFactor * 0.85);
+  }
 
   const totalSnow = Math.max(snowAmount, naturalSnow);
 
-  if (totalSnow > 0.05) {
-    // Grand Mountain Adventure style volumetric snow shading:
-    // Blend warm rosy sunlit tops -> soft lavender midtones -> rich periwinkle-violet shadows in couloirs and dips
-    const shadowFactor = Math.min(1.0, Math.max(0, steepness * 0.7 - curvature * 1.8));
-    if (shadowFactor > 0.4) {
-      _tmpSnow.lerpColors(SNOW_SHADOW, SNOW_DEEP_SHADOW, (shadowFactor - 0.4) / 0.6);
-    } else if (shadowFactor > 0.15) {
-      _tmpSnow.lerpColors(SNOW_MID, SNOW_SHADOW, (shadowFactor - 0.15) / 0.25);
+  if (totalSnow > 0.03) {
+    // Volumetric Subsurface Snow Lighting:
+    // Sun aspect factor (sun from south/south-west: dir ~ -0.6, -0.7)
+    const sunDot = (-gradX * -0.6 - gradZ * -0.7) / (steepness + 0.001);
+    
+    // Shadow factor considers steepness, couloir depth, and aspect relative to sun
+    const shadowFactor = Math.min(1.0, Math.max(0, steepness * 0.65 - curvature * 1.6 - sunDot * 0.25));
+
+    if (shadowFactor > 0.5) {
+      _tmpSnow.lerpColors(SNOW_SHADOW, SNOW_DEEP_SHADOW, (shadowFactor - 0.5) / 0.5);
+    } else if (shadowFactor > 0.2) {
+      _tmpSnow.lerpColors(SNOW_MID, SNOW_SHADOW, (shadowFactor - 0.2) / 0.3);
     } else {
-      _tmpSnow.lerpColors(SNOW_SUNLIT, SNOW_MID, shadowFactor / 0.15);
+      _tmpSnow.lerpColors(SNOW_SUNLIT, SNOW_MID, shadowFactor / 0.2);
+    }
+
+    // Warm radiant glow on sunlit crests
+    if (sunDot > 0.35 && curvature < 0.1) {
+      _tmpSnow.lerp(SNOW_WARM_CREST, (sunDot - 0.35) * 0.45);
     }
 
     result.lerpColors(base, _tmpSnow, Math.min(totalSnow, 1.0));
@@ -219,7 +232,7 @@ function computeColors(seaLevel, minX = 0, maxX = resolution - 1, minZ = 0, maxZ
 
       const curvature = hL + hR + hU + hD - 4.0 * h;
 
-      const c = _colorForHeight(h, seaLevel, steepness, snowmap[i], curvature, grassmap ? grassmap[i] : 0);
+      const c = _colorForHeight(h, seaLevel, steepness, snowmap[i], curvature, grassmap ? grassmap[i] : 0, gx, gz, gradX, gradZ);
       currentColors[i * 3 + 0] = c.r;
       currentColors[i * 3 + 1] = c.g;
       currentColors[i * 3 + 2] = c.b;

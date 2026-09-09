@@ -26,11 +26,17 @@ export class Terrain {
     const colors = new Float32Array(count * 3);
     this.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
+    // Generate procedural micro-crystalline snow normal & roughness maps
+    const { normalMap, roughnessMap } = Terrain._createSnowTextures();
+
     this.material = new THREE.MeshStandardMaterial({
       vertexColors: true,
       flatShading: false,
-      roughness: 0.68,
-      metalness: 0.02,
+      normalMap,
+      normalScale: new THREE.Vector2(0.75, 0.75),
+      roughnessMap,
+      roughness: 0.62,
+      metalness: 0.04,
     });
 
     this.mesh = new THREE.Mesh(this.geometry, this.material);
@@ -311,5 +317,129 @@ export class Terrain {
 
     this.worker.postMessage({ type: 'flattenPad', wx, wz, radius });
     this.updateHeightmap();
+  }
+
+  /**
+   * Generates seamless procedural crystalline snow normal and roughness maps.
+   */
+  static _createSnowTextures() {
+    const texSize = 512;
+    const normalCanvas = document.createElement('canvas');
+    normalCanvas.width = texSize;
+    normalCanvas.height = texSize;
+    const normalCtx = normalCanvas.getContext('2d');
+
+    const roughnessCanvas = document.createElement('canvas');
+    roughnessCanvas.width = texSize;
+    roughnessCanvas.height = texSize;
+    const roughnessCtx = roughnessCanvas.getContext('2d');
+
+    const normalImg = normalCtx.createImageData(texSize, texSize);
+    const normalData = normalImg.data;
+    const roughImg = roughnessCtx.createImageData(texSize, texSize);
+    const roughData = roughImg.data;
+
+    const heightField = new Float32Array(texSize * texSize);
+
+    const grad = (x, y) => {
+      const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+      return n - Math.floor(n);
+    };
+
+    const noise2D = (x, y, period) => {
+      const px = ((x % period) + period) % period;
+      const py = ((y % period) + period) % period;
+      const x0 = Math.floor(px);
+      const y0 = Math.floor(py);
+      const x1 = (x0 + 1) % period;
+      const y1 = (y0 + 1) % period;
+      const fx = px - x0;
+      const fy = py - y0;
+      const sx = fx * fx * (3 - 2 * fx);
+      const sy = fy * fy * (3 - 2 * fy);
+
+      const n00 = grad(x0, y0);
+      const n10 = grad(x1, y0);
+      const n01 = grad(x0, y1);
+      const n11 = grad(x1, y1);
+
+      const nx0 = n00 * (1 - sx) + n10 * sx;
+      const nx1 = n01 * (1 - sx) + n11 * sx;
+      return nx0 * (1 - sy) + nx1 * sy;
+    };
+
+    for (let y = 0; y < texSize; y++) {
+      for (let x = 0; x < texSize; x++) {
+        // Layer 1: Fine high-frequency ice crystal micro-facets
+        const fineP = 32;
+        const fine = noise2D(x / (texSize / fineP), y / (texSize / fineP), fineP);
+
+        // Layer 2: Wind-sculpted sastrugi drifts (diagonal ripples)
+        const sastrugiP = 8;
+        const sx = x * 0.85 + y * 0.52;
+        const sastrugi = Math.sin(sx / (texSize / sastrugiP) * Math.PI * 2) * 0.5 + 0.5;
+
+        // Layer 3: Soft powder waves
+        const waveP = 4;
+        const wave = noise2D(x / (texSize / waveP), y / (texSize / waveP), waveP);
+
+        const h = fine * 0.35 + sastrugi * 0.45 + wave * 0.20;
+        heightField[y * texSize + x] = h;
+      }
+    }
+
+    const bumpStrength = 4.5;
+    for (let y = 0; y < texSize; y++) {
+      for (let x = 0; x < texSize; x++) {
+        const xL = (x - 1 + texSize) % texSize;
+        const xR = (x + 1) % texSize;
+        const yU = (y - 1 + texSize) % texSize;
+        const yD = (y + 1) % texSize;
+
+        const hL = heightField[y * texSize + xL];
+        const hR = heightField[y * texSize + xR];
+        const hU = heightField[yU * texSize + x];
+        const hD = heightField[yD * texSize + x];
+        const hCenter = heightField[y * texSize + x];
+
+        const dx = (hR - hL) * bumpStrength;
+        const dy = (hD - hU) * bumpStrength;
+        const len = Math.sqrt(dx * dx + dy * dy + 1.0);
+
+        const nx = -dx / len;
+        const ny = -dy / len;
+        const nz = 1.0 / len;
+
+        const idx = (y * texSize + x) * 4;
+
+        normalData[idx + 0] = Math.round((nx * 0.5 + 0.5) * 255);
+        normalData[idx + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+        normalData[idx + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+        normalData[idx + 3] = 255;
+
+        // Realistic roughness: wind-packed drifts are slightly glossier (~0.42), powder hollows ~0.77
+        const rough = 0.42 + (1.0 - hCenter) * 0.35;
+        const rByte = Math.round(rough * 255);
+        roughData[idx + 0] = rByte;
+        roughData[idx + 1] = rByte;
+        roughData[idx + 2] = rByte;
+        roughData[idx + 3] = 255;
+      }
+    }
+
+    normalCtx.putImageData(normalImg, 0, 0);
+    roughnessCtx.putImageData(roughImg, 0, 0);
+
+    const normalTexture = new THREE.CanvasTexture(normalCanvas);
+    normalTexture.wrapS = THREE.RepeatWrapping;
+    normalTexture.wrapT = THREE.RepeatWrapping;
+    normalTexture.repeat.set(64, 64);
+
+    const roughnessTexture = new THREE.CanvasTexture(roughnessCanvas);
+    roughnessTexture.wrapS = THREE.RepeatWrapping;
+    roughnessTexture.wrapT = THREE.RepeatWrapping;
+    roughnessTexture.repeat.set(64, 64);
+
+    return { normalMap: normalTexture, roughnessMap: roughnessTexture };
   }
 }
