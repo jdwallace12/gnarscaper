@@ -474,8 +474,8 @@ export class PlayerSkier {
 
     // Camera pitch (W/S keys)
     const pitchSpeed = 1.5; // radians/sec
-    if (this._keys.lookUp) this.cameraPitch = Math.min(this.cameraPitch + pitchSpeed * dt, 1.0);
-    if (this._keys.lookDown) this.cameraPitch = Math.max(this.cameraPitch - pitchSpeed * dt, -0.5);
+    if (this._keys.lookUp) this.cameraPitch = Math.min(this.cameraPitch + pitchSpeed * dt, 1.5);
+    if (this._keys.lookDown) this.cameraPitch = Math.max(this.cameraPitch - pitchSpeed * dt, -1.0);
     // Gently return to neutral when not pressing
     if (!this._keys.lookUp && !this._keys.lookDown) {
       this.cameraPitch *= 0.92;
@@ -835,7 +835,8 @@ export class PlayerSkier {
       const dx = loadX - this.wx;
       const dz = loadZ - this.wz;
       const distSq = dx * dx + dz * dz;
-      const boardRadius = line.type === 'tram' ? 5.5 : 3.5;
+      // Tight boarding radius — player must walk up to the actual load point
+      const boardRadius = line.type === 'tram' ? 3.5 : 2.2;
 
       if (distSq < boardRadius * boardRadius) {
         this.state = 'waiting';
@@ -928,11 +929,19 @@ export class PlayerSkier {
       return true;
     }
 
-    this.wx = chairPos.x;
-    this.wz = chairPos.z;
+    // Smooth-follow the chair to eliminate per-physics-step jitter
+    const rideSmooth = Math.min(1.0, 18.0 * dt);
+    this.wx = this.wx + (chairPos.x - this.wx) * rideSmooth;
+    this.wz = this.wz + (chairPos.z - this.wz) * rideSmooth;
     const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : 0.68;
-    this.y = chairPos.y - rideOffset; // Sit/stand naturally inside cabin or on chairlift bench
-    this.heading = this.chair.mesh.rotation.y;
+    const targetY = chairPos.y - rideOffset;
+    this.y = this.y + (targetY - this.y) * rideSmooth;
+    // Smoothly interpolate heading to avoid snapping when yaw changes
+    const rawHeading = this.chair.mesh.rotation.y;
+    let headingDiff = rawHeading - this.heading;
+    while (headingDiff > Math.PI) headingDiff -= Math.PI * 2;
+    while (headingDiff < -Math.PI) headingDiff += Math.PI * 2;
+    this.heading += headingDiff * Math.min(1.0, 10.0 * dt);
     this.speed = this.targetLine.speed || 8.0;
 
     // Free-look while riding: left/right arrows rotate camera, W/S pitch
