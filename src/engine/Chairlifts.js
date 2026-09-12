@@ -56,8 +56,8 @@ export class Chairlifts {
 
   /**
    * Build a complete lift line between world points p1 and p2.
-   * @param {THREE.Vector3} p1 - Base station point
-   * @param {THREE.Vector3} p2 - Summit station point
+   * @param {THREE.Vector3} p1 - First station point
+   * @param {THREE.Vector3} p2 - Second station point
    * @param {object|string} options - { type: 'chairlift' | 'quad' | 'tram' }
    */
   buildLine(p1, p2, options = {}) {
@@ -66,19 +66,34 @@ export class Chairlifts {
     const isQuad = type === 'quad';
     const lineGroup = new THREE.Group();
     
-    const dx = p2.x - p1.x;
-    const dz = p2.z - p1.z;
+    // Always identify lower elevation as base, higher elevation as summit
+    const isP1Lower = p1.y <= p2.y;
+    const base = isP1Lower ? p1.clone() : p2.clone();
+    const summit = isP1Lower ? p2.clone() : p1.clone();
+
+    const dx = summit.x - base.x;
+    const dz = summit.z - base.z;
     const horizontalLength = Math.sqrt(dx * dx + dz * dz);
     if (horizontalLength < 5) return; // Too short!
 
-    // Flatten terrain pads under base (p1) and top (p2) stations
+    // Flatten terrain pads under base and top stations
     const padRadius = isTram ? 16 : (isQuad ? 14 : 12);
     if (this.terrain && this.terrain.flattenPad) {
-      this.terrain.flattenPad(p1.x, p1.z, padRadius);
-      this.terrain.flattenPad(p2.x, p2.z, padRadius);
-      p1.y = this.terrain.getInterpolatedHeight(p1.x, p1.z);
-      p2.y = this.terrain.getInterpolatedHeight(p2.x, p2.z);
+      this.terrain.flattenPad(base.x, base.z, padRadius);
+      this.terrain.flattenPad(summit.x, summit.z, padRadius);
+      base.y = this.terrain.getInterpolatedHeight(base.x, base.z);
+      summit.y = this.terrain.getInterpolatedHeight(summit.x, summit.z);
     }
+
+    // Direction unit vectors (u = uphill direction, v = perpendicular right-side direction)
+    const ux = dx / horizontalLength;
+    const uz = dz / horizontalLength;
+    const vx = uz;
+    const vz = -ux;
+
+    // Standard Three.js yaw angles (atan2(dx, dz) where +Z is forward 0 rad)
+    const yawUphill = Math.atan2(dx, dz);
+    const yawDownhill = Math.atan2(-dx, -dz);
 
     // Determine tower spacing, clearance, and track width
     const towerSpacing = isTram ? 45 : (isQuad ? 32 : 28);
@@ -87,88 +102,90 @@ export class Chairlifts {
     const clearance = isTram ? 11.0 : (isQuad ? 8.5 : 7.5);
     const minHeightAboveTerrain = isTram ? 4.5 : (isQuad ? 3.5 : 3.0);
     const trackOffset = isTram ? 1.6 : (isQuad ? 1.1 : 0.75);
-    const angle = Math.atan2(dz, dx);
 
-    // Cable path arrays
+    // Cable path arrays (from base index 0 to summit index towerCount)
     const cablePoints = [];
 
-    // Place towers
     for (let i = 0; i <= towerCount; i++) {
       const t = i * step;
-      const tx = p1.x + dx * t;
-      const tz = p1.z + dz * t;
+      const tx = base.x + dx * t;
+      const tz = base.z + dz * t;
       
-      // Terrain height at this horizontal pos
       const { gx, gz } = this.terrain.worldToGrid(tx, tz);
       const h = this.terrain.getHeight(gx, gz);
 
-      // Desired cable height
-      const idealH = THREE.MathUtils.lerp(p1.y, p2.y, t) + clearance;
+      const idealH = THREE.MathUtils.lerp(base.y, summit.y, t) + clearance;
       const cableH = Math.max(idealH, h + minHeightAboveTerrain);
 
       cablePoints.push(new THREE.Vector3(tx, cableH, tz));
 
       const towerHeight = cableH - h;
 
-      if (isTram) {
-        // Build Heavy-duty A-Frame Tram Tower
-        const towerObj = this._buildTramTower(towerHeight, trackOffset);
-        towerObj.position.set(tx, h, tz);
-        towerObj.rotation.y = angle + Math.PI / 2;
-        lineGroup.add(towerObj);
-      } else if (isQuad) {
-        // Build Modern Quad Chairlift Tubular Tower with wide crosshead
-        const towerObj = this._buildQuadTower(towerHeight, trackOffset);
-        towerObj.position.set(tx, h, tz);
-        towerObj.rotation.y = angle + Math.PI / 2;
-        lineGroup.add(towerObj);
-      } else {
-        // Build Classic Double Chairlift Tower
-        const towerGeo = new THREE.CylinderGeometry(0.1, 0.2, towerHeight, 4);
-        towerGeo.translate(0, towerHeight / 2, 0);
-        const towerMesh = new THREE.Mesh(towerGeo, this.matTower);
-        towerMesh.position.set(tx, h, tz);
-        towerMesh.castShadow = true;
-        lineGroup.add(towerMesh);
+      // Only place intermediate towers between stations
+      if (i > 0 && i < towerCount) {
+        if (isTram) {
+          const towerObj = this._buildTramTower(towerHeight, trackOffset);
+          towerObj.position.set(tx, h, tz);
+          towerObj.rotation.y = yawUphill;
+          lineGroup.add(towerObj);
+        } else if (isQuad) {
+          const towerObj = this._buildQuadTower(towerHeight, trackOffset);
+          towerObj.position.set(tx, h, tz);
+          towerObj.rotation.y = yawUphill;
+          lineGroup.add(towerObj);
+        } else {
+          const towerGeo = new THREE.CylinderGeometry(0.1, 0.2, towerHeight, 4);
+          towerGeo.translate(0, towerHeight / 2, 0);
+          const towerMesh = new THREE.Mesh(towerGeo, this.matTower);
+          towerMesh.position.set(tx, h, tz);
+          towerMesh.castShadow = true;
+          lineGroup.add(towerMesh);
 
-        // Crossbar
-        const crossbarGeo = new THREE.BoxGeometry(1.6, 0.2, 0.2);
-        const crossbar = new THREE.Mesh(crossbarGeo, this.matTower);
-        crossbar.position.set(tx, cableH, tz);
-        crossbar.rotation.y = angle + Math.PI / 2;
-        crossbar.castShadow = true;
-        lineGroup.add(crossbar);
+          const crossbarGeo = new THREE.BoxGeometry(trackOffset * 2 + 0.4, 0.2, 0.2);
+          const crossbar = new THREE.Mesh(crossbarGeo, this.matTower);
+          crossbar.position.set(tx, cableH, tz);
+          crossbar.rotation.y = yawUphill;
+          crossbar.castShadow = true;
+          lineGroup.add(crossbar);
+        }
       }
     }
 
-    // Build cables (Left track and Right track)
-    const cableGeoLeft = new THREE.BufferGeometry().setFromPoints(cablePoints.map(p => {
-      const perpAngle = angle + Math.PI / 2;
-      return new THREE.Vector3(p.x + Math.cos(perpAngle) * trackOffset, p.y + 0.1, p.z + Math.sin(perpAngle) * trackOffset);
-    }));
-    const cableGeoRight = new THREE.BufferGeometry().setFromPoints(cablePoints.map(p => {
-      const perpAngle = angle - Math.PI / 2;
-      return new THREE.Vector3(p.x + Math.cos(perpAngle) * trackOffset, p.y + 0.1, p.z + Math.sin(perpAngle) * trackOffset);
-    }));
+    // Build visual cables as a continuous closed loop
+    const uphillCablePoints = cablePoints.map(p => new THREE.Vector3(p.x + vx * trackOffset, p.y + 0.1, p.z + vz * trackOffset));
+    const downhillCablePoints = cablePoints.map(p => new THREE.Vector3(p.x - vx * trackOffset, p.y + 0.1, p.z - vz * trackOffset));
 
-    lineGroup.add(new THREE.Line(cableGeoLeft, this.matCable));
-    lineGroup.add(new THREE.Line(cableGeoRight, this.matCable));
+    const loopPoints = [...uphillCablePoints];
+    const topPt = cablePoints[towerCount];
+    const basePt = cablePoints[0];
 
-    // For tram: add second parallel track cables
+    const arcSteps = 8;
+    for (let k = 1; k < arcSteps; k++) {
+      const th = (k / arcSteps) * Math.PI;
+      const lx = topPt.x + (vx * Math.cos(th) + ux * Math.sin(th)) * trackOffset;
+      const lz = topPt.z + (vz * Math.cos(th) + uz * Math.sin(th)) * trackOffset;
+      loopPoints.push(new THREE.Vector3(lx, topPt.y + 0.1, lz));
+    }
+    for (let i = towerCount; i >= 0; i--) {
+      loopPoints.push(downhillCablePoints[i]);
+    }
+    for (let k = 1; k < arcSteps; k++) {
+      const th = (k / arcSteps) * Math.PI;
+      const lx = basePt.x - (vx * Math.cos(th) + ux * Math.sin(th)) * trackOffset;
+      const lz = basePt.z - (vz * Math.cos(th) + uz * Math.sin(th)) * trackOffset;
+      loopPoints.push(new THREE.Vector3(lx, basePt.y + 0.1, lz));
+    }
+    loopPoints.push(uphillCablePoints[0].clone()); // Close loop
+
+    const cableGeo = new THREE.BufferGeometry().setFromPoints(loopPoints);
+    lineGroup.add(new THREE.Line(cableGeo, this.matCable));
+
     if (isTram) {
-      const cableGeoLeft2 = new THREE.BufferGeometry().setFromPoints(cablePoints.map(p => {
-        const perpAngle = angle + Math.PI / 2;
-        return new THREE.Vector3(p.x + Math.cos(perpAngle) * (trackOffset + 0.2), p.y + 0.1, p.z + Math.sin(perpAngle) * (trackOffset + 0.2));
-      }));
-      const cableGeoRight2 = new THREE.BufferGeometry().setFromPoints(cablePoints.map(p => {
-        const perpAngle = angle - Math.PI / 2;
-        return new THREE.Vector3(p.x + Math.cos(perpAngle) * (trackOffset - 0.2), p.y + 0.1, p.z + Math.sin(perpAngle) * (trackOffset - 0.2));
-      }));
-      lineGroup.add(new THREE.Line(cableGeoLeft2, this.matCable));
-      lineGroup.add(new THREE.Line(cableGeoRight2, this.matCable));
+      const loopPoints2 = loopPoints.map(p => p.clone().add(new THREE.Vector3(0, 0.05, 0)));
+      lineGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(loopPoints2), this.matCable));
     }
 
-    // Measure actual 3D cable length
+    // Measure actual 3D cable length along line
     let totalLength = 0;
     for (let i = 0; i < cablePoints.length - 1; i++) {
       totalLength += cablePoints[i].distanceTo(cablePoints[i+1]);
@@ -178,7 +195,6 @@ export class Chairlifts {
     const chairs = [];
 
     if (isTram) {
-      // Reversible Aerial Tramway: 2 Large Panoramic Cabins (Car 1 and Car 2)
       const tram1 = this._buildTramCabin(this.matTramCabinBody1, '1');
       chairs.push({
         mesh: tram1,
@@ -201,7 +217,6 @@ export class Chairlifts {
       });
       lineGroup.add(tram2);
     } else if (isQuad) {
-      // High-Speed Quad: 4-passenger chairs spaced every ~7 units
       const chairCount = Math.max(4, Math.floor(totalLength / 7));
       for (let i = 0; i < chairCount; i++) {
         const quadGrp = this._buildQuadChair();
@@ -218,7 +233,6 @@ export class Chairlifts {
         lineGroup.add(quadGrp);
       }
     } else {
-      // Classic Double Chairlift: 2-passenger chairs spaced every ~5 units
       const chairCount = Math.max(4, Math.floor(totalLength / 5));
       for (let i = 0; i < chairCount; i++) {
         const chairGrp = this._buildChair();
@@ -236,36 +250,36 @@ export class Chairlifts {
       }
     }
 
-    // Build Station Terminals at top and bottom
+    // Build Station Terminals at base and summit
     if (isTram) {
       const station1 = this._buildTramStation();
-      station1.position.set(p1.x, p1.y, p1.z);
-      station1.rotation.y = angle + Math.PI / 2;
+      station1.position.set(base.x, base.y, base.z);
+      station1.rotation.y = yawUphill;
       lineGroup.add(station1);
 
       const station2 = this._buildTramStation();
-      station2.position.set(p2.x, p2.y, p2.z);
-      station2.rotation.y = angle + Math.PI / 2;
+      station2.position.set(summit.x, summit.y, summit.z);
+      station2.rotation.y = yawUphill + Math.PI;
       lineGroup.add(station2);
     } else if (isQuad) {
       const station1 = this._buildQuadStation();
-      station1.position.set(p1.x, p1.y, p1.z);
-      station1.rotation.y = angle + Math.PI / 2;
+      station1.position.set(base.x, base.y, base.z);
+      station1.rotation.y = yawUphill;
       lineGroup.add(station1);
 
       const station2 = this._buildQuadStation();
-      station2.position.set(p2.x, p2.y, p2.z);
-      station2.rotation.y = angle + Math.PI / 2;
+      station2.position.set(summit.x, summit.y, summit.z);
+      station2.rotation.y = yawUphill + Math.PI;
       lineGroup.add(station2);
     } else {
       const station1 = this._buildStation();
-      station1.position.set(p1.x, p1.y, p1.z);
-      station1.rotation.y = angle + Math.PI / 2;
+      station1.position.set(base.x, base.y, base.z);
+      station1.rotation.y = yawUphill;
       lineGroup.add(station1);
 
       const station2 = this._buildStation();
-      station2.position.set(p2.x, p2.y, p2.z);
-      station2.rotation.y = angle + Math.PI / 2;
+      station2.position.set(summit.x, summit.y, summit.z);
+      station2.rotation.y = yawUphill + Math.PI;
       lineGroup.add(station2);
     }
 
@@ -276,57 +290,120 @@ export class Chairlifts {
     if (isTram) speed = this.tramSpeed;
     else if (isQuad) speed = this.quadChairSpeed;
 
-    this.lines.push({
+    const lineData = {
       group: lineGroup,
       cablePoints,
       totalLength,
       chairs,
       dx, dz,
+      ux, uz,
+      vx, vz,
+      yawUphill,
+      yawDownhill,
+      baseStation: base,
+      summitStation: summit,
       p1: p1.clone(),
       p2: p2.clone(),
       type: type,
       trackOffset: trackOffset,
       speed: speed
-    });
+    };
+
+    this.lines.push(lineData);
+
+    // Position all chairs immediately to prevent first-frame popping
+    for (const chair of chairs) {
+      const tform = this.getChairTransform(lineData, chair.progress);
+      chair.mesh.position.set(tform.x, tform.y, tform.z);
+      chair.mesh.rotation.y = tform.yaw;
+    }
+  }
+
+  /**
+   * Get smooth, continuous 3D world position and yaw rotation for a chair along the lift loop.
+   * @param {object} line 
+   * @param {number} progress in [0, 1)
+   */
+  getChairTransform(line, progress) {
+    let p = progress % 1.0;
+    if (p < 0) p += 1.0;
+
+    const cablePoints = line.cablePoints;
+    const segmentCount = cablePoints.length - 1;
+    const trackOffset = line.trackOffset || 0.75;
+    const vx = line.vx;
+    const vz = line.vz;
+    const ux = line.ux;
+    const uz = line.uz;
+    const yawUphill = line.yawUphill;
+    const isTram = line.type === 'tram';
+    const yLift = isTram ? 0.0 : 0.1;
+
+    let x, y, z, yaw;
+
+    if (p < 0.48) {
+      // 1. Uphill Track (progress 0.0 -> 0.48)
+      const u = p / 0.48; // 0 to 1
+      const segT = u * segmentCount;
+      const idx = Math.min(Math.floor(segT), segmentCount - 1);
+      const frac = segT - idx;
+      const pA = cablePoints[idx];
+      const pB = cablePoints[idx + 1];
+
+      x = THREE.MathUtils.lerp(pA.x, pB.x, frac) + vx * trackOffset;
+      y = THREE.MathUtils.lerp(pA.y, pB.y, frac) + yLift;
+      z = THREE.MathUtils.lerp(pA.z, pB.z, frac) + vz * trackOffset;
+      yaw = yawUphill;
+    } else if (p < 0.52) {
+      // 2. Summit Bullwheel Loop (progress 0.48 -> 0.52)
+      const u = (p - 0.48) / 0.04; // 0 to 1
+      const theta = u * Math.PI; // 0 to PI
+      const summitPt = cablePoints[segmentCount];
+
+      x = summitPt.x + (vx * Math.cos(theta) + ux * Math.sin(theta)) * trackOffset;
+      y = summitPt.y + yLift;
+      z = summitPt.z + (vz * Math.cos(theta) + uz * Math.sin(theta)) * trackOffset;
+      yaw = yawUphill + theta;
+    } else if (p < 0.96) {
+      // 3. Downhill Return Track (progress 0.52 -> 0.96)
+      const u = (p - 0.52) / 0.44; // 0 to 1
+      const segT = (1.0 - u) * segmentCount;
+      const idx = Math.min(Math.floor(segT), segmentCount - 1);
+      const frac = segT - idx;
+      const pA = cablePoints[idx];
+      const pB = cablePoints[idx + 1];
+
+      x = THREE.MathUtils.lerp(pA.x, pB.x, frac) - vx * trackOffset;
+      y = THREE.MathUtils.lerp(pA.y, pB.y, frac) + yLift;
+      z = THREE.MathUtils.lerp(pA.z, pB.z, frac) - vz * trackOffset;
+      yaw = yawUphill + Math.PI;
+    } else {
+      // 4. Base Bullwheel Loop (progress 0.96 -> 1.00)
+      const u = (p - 0.96) / 0.04; // 0 to 1
+      const theta = u * Math.PI; // 0 to PI
+      const basePt = cablePoints[0];
+
+      x = basePt.x - (vx * Math.cos(theta) + ux * Math.sin(theta)) * trackOffset;
+      y = basePt.y + yLift;
+      z = basePt.z - (vz * Math.cos(theta) + uz * Math.sin(theta)) * trackOffset;
+      yaw = yawUphill + Math.PI + theta;
+    }
+
+    return { x, y, z, yaw };
   }
 
   update(dt) {
     for (const line of this.lines) {
-      const lineSpeed = line.speed || (line.type === 'tram' ? this.tramSpeed : this.chairliftSpeed);
+      const lineSpeed = line.speed || (line.type === 'tram' ? this.tramSpeed : this.doubleChairSpeed);
       const progressSpeed = lineSpeed / (line.totalLength * 2);
 
       for (const chair of line.chairs) {
         chair.progress += progressSpeed * dt;
         if (chair.progress >= 1.0) chair.progress -= 1.0;
 
-        const isReturn = chair.progress > 0.5;
-        let t = isReturn ? 1.0 - ((chair.progress - 0.5) * 2) : chair.progress * 2;
-        
-        // Find segment
-        const segmentCount = line.cablePoints.length - 1;
-        const segmentT = t * segmentCount;
-        const index = Math.floor(segmentT);
-        const frac = segmentT - index;
-
-        let pA, pB;
-        if (index >= segmentCount) {
-          pA = line.cablePoints[segmentCount];
-          pB = pA;
-        } else {
-          pA = line.cablePoints[index];
-          pB = line.cablePoints[index + 1];
-        }
-
-        const angle = Math.atan2(line.dz, line.dx);
-        const offsetDist = line.trackOffset || 0.75;
-        const offsetAngle = isReturn ? angle - Math.PI / 2 : angle + Math.PI / 2;
-        
-        const currentX = THREE.MathUtils.lerp(pA.x, pB.x, frac) + Math.cos(offsetAngle) * offsetDist;
-        const currentY = THREE.MathUtils.lerp(pA.y, pB.y, frac) + (line.type === 'tram' ? 0.0 : 0.1);
-        const currentZ = THREE.MathUtils.lerp(pA.z, pB.z, frac) + Math.sin(offsetAngle) * offsetDist;
-
-        chair.mesh.position.set(currentX, currentY, currentZ);
-        chair.mesh.rotation.y = isReturn ? angle + Math.PI : angle;
+        const tform = this.getChairTransform(line, chair.progress);
+        chair.mesh.position.set(tform.x, tform.y, tform.z);
+        chair.mesh.rotation.y = tform.yaw;
       }
     }
   }

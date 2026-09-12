@@ -825,23 +825,27 @@ export class PlayerSkier {
   }
 
   _checkChairliftBoarding(chairlifts) {
+    if (!this.grounded || this.state !== 'skiing') return;
     for (const line of chairlifts.lines) {
-      // Check both ends - but only board if it's the LOWER station (the base)
-      const isP1Lower = line.p1.y < line.p2.y;
-      const baseStation = isP1Lower ? line.p1 : line.p2;
-      
-      const dx = baseStation.x - this.wx;
-      const dz = baseStation.z - this.wz;
+      const base = line.baseStation || (line.p1.y < line.p2.y ? line.p1 : line.p2);
+      const trackOffset = line.trackOffset || 0.75;
+      const loadX = base.x + (line.vx || 0) * trackOffset;
+      const loadZ = base.z + (line.vz || 0) * trackOffset;
+
+      const dx = loadX - this.wx;
+      const dz = loadZ - this.wz;
       const distSq = dx * dx + dz * dz;
-      const boardRadius = line.type === 'tram' ? 6.5 : 4.0;
+      const boardRadius = line.type === 'tram' ? 5.5 : 3.5;
 
       if (distSq < boardRadius * boardRadius) {
         this.state = 'waiting';
-        this.targetStation = baseStation;
+        this.targetStation = base;
         this.targetLine = line;
         this.vx = 0;
         this.vz = 0;
+        this.vy = 0;
         this.speed = 0;
+        this.isClimbing = false;
         this._waitingTime = 0;
         break;
       }
@@ -854,32 +858,41 @@ export class PlayerSkier {
     this._prevWz = this.wz;
     this._prevY = this.y;
 
-    // Snap to station center
-    this.wx = THREE.MathUtils.lerp(this.wx, this.targetStation.x, 0.1);
-    this.wz = THREE.MathUtils.lerp(this.wz, this.targetStation.z, 0.1);
+    if (!this.targetLine) {
+      this.state = 'skiing';
+      return true;
+    }
+
+    const line = this.targetLine;
+    const base = line.baseStation || line.p1;
+    const trackOffset = line.trackOffset || 0.75;
+    const loadX = base.x + (line.vx || 0) * trackOffset;
+    const loadZ = base.z + (line.vz || 0) * trackOffset;
+
+    // Smoothly guide skier to the exact chair loading spot facing uphill
+    this.wx = THREE.MathUtils.lerp(this.wx, loadX, 0.15);
+    this.wz = THREE.MathUtils.lerp(this.wz, loadZ, 0.15);
     this.y = this.terrain.getInterpolatedHeight(this.wx, this.wz);
+    this.heading = line.yawUphill !== undefined ? line.yawUphill : Math.atan2(line.dx, line.dz);
+    this.vx = 0;
+    this.vz = 0;
+    this.vy = 0;
+    this.speed = 0;
 
     this._waitingTime += dt;
 
-    // Look for a chair/cabin departing UPWARDS from the base station
-    const isP1Base = this.targetStation === this.targetLine.p1;
-    const window = this.targetLine.type === 'tram' ? 0.08 : 0.06;
-
-    for (const chair of this.targetLine.chairs) {
-      if (isP1Base) {
-        // Base is p1: upward direction is progress 0.0 -> 0.5
-        // Board only when vehicle has turned around at p1 and is departing UPWARDS
-        if ((chair.progress >= 0.0 && chair.progress <= window) || chair.progress >= 0.98) {
+    // Board only when a chair physically arrives at the base loading line
+    for (const chair of line.chairs) {
+      const isAtBase = (chair.progress >= 0.0 && chair.progress <= 0.035) || chair.progress >= 0.985;
+      if (isAtBase) {
+        const cp = chair.mesh.position;
+        const dChair = Math.sqrt((cp.x - this.wx) ** 2 + (cp.z - this.wz) ** 2);
+        if (dChair < 1.8 || this._waitingTime > 4.5) {
           this.state = 'riding';
           this.chair = chair;
-          break;
-        }
-      } else {
-        // Base is p2: upward direction is progress 0.5 -> 1.0
-        // Board only when vehicle has turned around at p2 and is departing UPWARDS
-        if (chair.progress >= 0.50 && chair.progress <= (0.50 + window)) {
-          this.state = 'riding';
-          this.chair = chair;
+          this.grounded = false;
+          this.isClimbing = false;
+          this._waitingTime = 0;
           break;
         }
       }
@@ -889,14 +902,17 @@ export class PlayerSkier {
 
   _updateRiding(dt) {
     this.paragliding = false;
+    this.grounded = false;
+    this.isClimbing = false;
     this._prevWx = this.wx;
     this._prevWz = this.wz;
     this._prevY = this.y;
 
     // Follow the chair/tram cabin mesh
-    if (!this.chair || !this.chair.mesh) {
+    if (!this.chair || !this.chair.mesh || !this.targetLine) {
       this.state = 'skiing';
       this.chair = null;
+      this.grounded = true;
       this._chairLookYaw = 0;
       this._chairLookPitch = 0;
       return true;
@@ -906,6 +922,7 @@ export class PlayerSkier {
     if (!isFinite(chairPos.x) || !isFinite(chairPos.y) || !isFinite(chairPos.z)) {
       this.state = 'skiing';
       this.chair = null;
+      this.grounded = true;
       this._chairLookYaw = 0;
       this._chairLookPitch = 0;
       return true;
@@ -913,20 +930,10 @@ export class PlayerSkier {
 
     this.wx = chairPos.x;
     this.wz = chairPos.z;
-    const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : 0.7;
+    const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : 0.68;
     this.y = chairPos.y - rideOffset; // Sit/stand naturally inside cabin or on chairlift bench
-
-    // Guard: if position somehow became NaN, bail out of riding
-    if (!isFinite(this.wx) || !isFinite(this.wz) || !isFinite(this.y)) {
-      this.wx = this._prevWx;
-      this.wz = this._prevWz;
-      this.y = this._prevY;
-      this.state = 'skiing';
-      this.chair = null;
-      this._chairLookYaw = 0;
-      this._chairLookPitch = 0;
-      return true;
-    }
+    this.heading = this.chair.mesh.rotation.y;
+    this.speed = this.targetLine.speed || 8.0;
 
     // Free-look while riding: left/right arrows rotate camera, W/S pitch
     const lookSpeed = 2.0; // radians/sec
@@ -935,60 +942,103 @@ export class PlayerSkier {
     if (this._keys.right) this._chairLookYaw -= lookSpeed * dt;
     if (this._keys.lookUp)   this._chairLookPitch = Math.min(this._chairLookPitch + pitchSpeed * dt, 8.0);
     if (this._keys.lookDown) this._chairLookPitch = Math.max(this._chairLookPitch - pitchSpeed * dt, -2.0);
-    // Gently return pitch to neutral when not pressing (slower return rate for lift look)
+    // Gently return pitch to neutral when not pressing
     if (!this._keys.lookUp && !this._keys.lookDown) {
       this._chairLookPitch *= Math.pow(0.99, dt * 60);
     }
 
-    // Check for dismount at top station
-    const isP1Base = this.targetStation === this.targetLine.p1;
+    // Check for dismount at summit station (progress ~0.47 - 0.50)
     let reachedTop = false;
-
-    if (isP1Base) {
-      // Top station is p2 (progress = 0.5)
-      if (this.chair.progress >= 0.46 && this.chair.progress <= 0.53) {
-        reachedTop = true;
-      }
-    } else {
-      // Top station is p1 (progress = 1.0 / 0.0)
-      if (this.chair.progress >= 0.96 || this.chair.progress <= 0.03) {
-        reachedTop = true;
-      }
+    if (this.chair.progress >= 0.465 && this.chair.progress <= 0.505) {
+      reachedTop = true;
     }
 
     if (reachedTop) {
-       this.state = 'skiing';
-       this.chair = null;
-       this.targetLine = null;
-       this.targetStation = null;
-       this._chairLookYaw = 0;
-       this._chairLookPitch = 0;
-       this.vy = 0;
-       this.grounded = true;
-       // Give a little push forward
-       let dx = this.wx - this._prevWx;
-       let dz = this.wz - this._prevWz;
-       const angle = (Math.abs(dx) < 0.001 && Math.abs(dz) < 0.001) ? this.heading : Math.atan2(dz, dx);
-       this.vx = Math.cos(angle) * 5;
-       this.vz = Math.sin(angle) * 5;
-     }
-     return true;
-   }
+      const line = this.targetLine;
+      this.state = 'skiing';
+      this.chair = null;
+      this.targetLine = null;
+      this.targetStation = null;
+      this._chairLookYaw = 0;
+      this._chairLookPitch = 0;
+      this.vy = 0;
+      this.grounded = true;
 
-   _isNearChairlift(wx, wz, chairlifts, threshold = 30) {
-     if (!chairlifts || !chairlifts.lines || chairlifts.lines.length === 0) return false;
-     for (const line of chairlifts.lines) {
-       const isP1Lower = line.p1.y < line.p2.y;
-       const base = isP1Lower ? line.p1 : line.p2;
-       const dSq = (wx - base.x) ** 2 + (wz - base.z) ** 2;
-       if (dSq <= threshold * threshold) return true;
-     }
-     return false;
-   }
+      // Smooth step-off onto summit snow ramp with forward glide
+      const dismountAngle = (line && line.yawUphill !== undefined) ? line.yawUphill : this.heading;
+      this.heading = dismountAngle;
+      const pushSpeed = 5.0;
+      this.vx = Math.sin(dismountAngle) * pushSpeed;
+      this.vz = Math.cos(dismountAngle) * pushSpeed;
+      this.speed = pushSpeed;
+      this.y = this.terrain.getInterpolatedHeight(this.wx, this.wz);
+    }
+    return true;
+  }
 
-   /** Interpolate visual position between prev and current physics state for sub-frame accuracy */
+  _isNearChairlift(wx, wz, chairlifts, threshold = 30) {
+    if (!chairlifts || !chairlifts.lines || chairlifts.lines.length === 0) return false;
+    for (const line of chairlifts.lines) {
+      const base = line.baseStation || (line.p1.y < line.p2.y ? line.p1 : line.p2);
+      const dSq = (wx - base.x) ** 2 + (wz - base.z) ** 2;
+      if (dSq <= threshold * threshold) return true;
+    }
+    return false;
+  }
+
+  /** Interpolate visual position between prev and current physics state for sub-frame accuracy */
   interpolateVisuals(alpha, dt) {
     if (!this.active || !this.mesh) return;
+
+    if (this.state === 'riding') {
+      // Lock visuals directly to chair mesh for 100% jitter-free synchronization
+      if (this.chair && this.chair.mesh) {
+        const cp = this.chair.mesh.position;
+        const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : 0.68;
+        this.mesh.position.set(cp.x, cp.y - rideOffset + 0.15, cp.z);
+        this.mesh.rotation.y = this.chair.mesh.rotation.y;
+        this.mesh.rotation.x = 0;
+        this.mesh.rotation.z = 0;
+      }
+
+      // Natural seated pose while riding
+      if (this._leftLeg && this._rightLeg) {
+        this._leftLeg.rotation.x = -1.2;
+        this._rightLeg.rotation.x = -1.2;
+        this._leftLeg.position.set(-0.09, 0.14, 0.06);
+        this._rightLeg.position.set(0.09, 0.14, 0.06);
+      }
+      if (this._leftSki && this._rightSki) {
+        this._leftSki.rotation.x = 0.0;
+        this._rightSki.rotation.x = 0.0;
+        this._leftSki.rotation.y = 0;
+        this._rightSki.rotation.y = 0;
+        this._leftSki.rotation.z = 0;
+        this._rightSki.rotation.z = 0;
+        this._leftSki.position.set(-0.09, -0.16, 0.14);
+        this._rightSki.position.set(0.09, -0.16, 0.14);
+      }
+      if (this._leftPole && this._rightPole) {
+        this._leftPole.rotation.x = 0.3;
+        this._rightPole.rotation.x = 0.3;
+        this._leftPole.rotation.z = -0.15;
+        this._rightPole.rotation.z = 0.15;
+        this._leftPole.position.set(-0.25, 0.22, 0.05);
+        this._rightPole.position.set(0.25, 0.22, 0.05);
+      }
+      if (this._torso) {
+        this._torso.rotation.set(0, 0, 0);
+        this._torso.position.set(0, 0.32, 0);
+      }
+      if (this._head) this._head.rotation.set(0, 0, 0);
+      if (this._helmet) this._helmet.rotation.set(0, 0, 0);
+
+      // Hide trails and parachute while riding
+      if (this._leftTrail) this._leftTrail.visible = false;
+      if (this._rightTrail) this._rightTrail.visible = false;
+      if (this._parachute) this._parachute.visible = false;
+      return;
+    }
 
     // Position Lerp
     const x = this._prevWx + (this.wx - this._prevWx) * alpha;
@@ -1120,16 +1170,14 @@ export class PlayerSkier {
       const leftLift = Math.max(0, Math.sin(phase)) * this._climbWeight;
       const rightLift = Math.max(0, Math.sin(phase + Math.PI)) * this._climbWeight;
       
-      // Parallel skis for skinning/cross-country (no herringbone splay!)
       const splay = 0.0;
 
       // Update Skis splay, lift and stride
       this._leftSki.rotation.y = splay;
       this._rightSki.rotation.y = -splay;
-      this._leftSki.position.z = leftVal * 0.35; // Nice, long cross-country stride!
+      this._leftSki.position.z = leftVal * 0.35;
       this._rightSki.position.z = rightVal * 0.35;
       
-      // Skinning slides along snow: very low vertical lift!
       this._leftSki.position.y = 0.015 + leftLift * 0.02;
       this._rightSki.position.y = 0.015 + rightLift * 0.02;
 
@@ -1142,7 +1190,7 @@ export class PlayerSkier {
       // Update Poles plant in opposition to skis, swing dynamically
       this._leftPole.position.z = rightVal * 0.3;
       this._leftPole.position.y = 0.22 + rightLift * 0.04;
-      this._leftPole.rotation.x = -rightVal * 0.45; // Dynamic pole swing
+      this._leftPole.rotation.x = -rightVal * 0.45;
       this._leftPole.rotation.z = -0.2 * (1 - this._climbWeight) - 0.25 * this._climbWeight;
 
       this._rightPole.position.z = leftVal * 0.3;
@@ -1161,7 +1209,6 @@ export class PlayerSkier {
       this._parachute.visible = this.paragliding;
       if (this.paragliding) {
         this._parachute.position.set(x, y + 0.15 - (this._kneeCompression || 0) * 0.5, z);
-        // Smoothly orient the canopy toward flight heading with aerodynamic sway
         const targetRotZ = -lean * 0.5;
         const targetRotX = -targetPitch * 0.5 - 0.2;
         this._parachute.rotation.y = this.heading;
@@ -1235,6 +1282,31 @@ export class PlayerSkier {
 
   /** Get the chase camera target position and look-at (uses pre-allocated vectors) */
   getCameraTarget(alpha, dt) {
+    // Dedicated rock-solid ride camera when on a chairlift or tram
+    if (this.state === 'riding' && this.chair && this.chair.mesh) {
+      const cp = this.chair.mesh.position;
+      const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : 0.68;
+      const curX = cp.x;
+      const curZ = cp.z;
+      const curY = cp.y - rideOffset;
+
+      const chairHeading = this.chair.mesh.rotation.y;
+      const camHeading = chairHeading + this._chairLookYaw;
+
+      const camDist = 7.5;
+      const camHeight = 3.2 + this._chairLookPitch * 1.5;
+
+      const camX = curX - Math.sin(camHeading) * camDist;
+      const camZ = curZ - Math.cos(camHeading) * camDist;
+      const camY = curY + camHeight;
+
+      const lookY = curY + 0.8 + this._chairLookPitch * 0.5;
+
+      this._camPosVec.set(camX, camY, camZ);
+      this._lookAtVec.set(curX, lookY, curZ);
+      return { position: this._camPosVec, lookAt: this._lookAtVec };
+    }
+
     // Interpolate everything strictly to exactly match visual drawing
     let x = this._prevWx + (this.wx - this._prevWx) * alpha;
     let z = this._prevWz + (this.wz - this._prevWz) * alpha;
@@ -1249,7 +1321,6 @@ export class PlayerSkier {
     const frameDt = dt || (1 / 60);
 
     // Camera tracks smoothed POSITION movement, not velocity or heading.
-    // This makes it immune to sudden changes from pushing/turning keys.
     if (this.cameraHeading === undefined) this.cameraHeading = this.heading;
     if (this._smoothTravelX === undefined) { this._smoothTravelX = 0; this._smoothTravelZ = 0; }
 
@@ -1259,51 +1330,36 @@ export class PlayerSkier {
     this._lastCamTrackX = x;
     this._lastCamTrackZ = z;
 
-    // Frame-rate independent smoothed movement tracking
-    // Time constant ~0.5s — responsive enough to track direction changes, smooth enough to filter jitter
     const moveSmooth = 1 - Math.pow(0.001, frameDt);
     this._smoothTravelX += (dx - this._smoothTravelX) * moveSmooth;
     this._smoothTravelZ += (dz - this._smoothTravelZ) * moveSmooth;
 
-    // NaN guard on smooth accumulators
     if (!isFinite(this._smoothTravelX)) this._smoothTravelX = 0;
     if (!isFinite(this._smoothTravelZ)) this._smoothTravelZ = 0;
 
-    // Update camera heading based on smoothed travel direction or skier heading
     const travelMag = Math.sqrt(this._smoothTravelX * this._smoothTravelX + this._smoothTravelZ * this._smoothTravelZ);
     const targetHeading = (travelMag > 0.0005) ? Math.atan2(this._smoothTravelX, this._smoothTravelZ) : this.heading;
     let diff = targetHeading - this.cameraHeading;
     if (isFinite(diff)) {
       while (diff < -Math.PI) diff += Math.PI * 2;
       while (diff > Math.PI) diff -= Math.PI * 2;
-      // Responsive camera tracking so camera stays tightly locked behind skier over water and land
       const headingSmooth = 1 - Math.pow(0.0001, frameDt);
       this.cameraHeading += diff * headingSmooth;
     }
 
-    // Base camera parameters (higher downward angle to frame skier prominently)
     const targetCamDist = 10.5;
-    const pitchForCam = this.state === 'riding' ? this._chairLookPitch : this.cameraPitch;
+    const pitchForCam = this.cameraPitch || 0;
     const targetCamHeight = 9.5 + pitchForCam * 5; 
-
-    // Camera Collision & Obstruction Avoidance
-    // We check the terrain height at the camera position and midway to the skier.
-    // If the terrain is too high, we calculate an 'ideal' pull-in amount.
-    let effectiveCamHeading = this.cameraHeading;
-    if (this.state === 'riding') {
-      effectiveCamHeading = this.cameraHeading + this._chairLookYaw;
-    }
 
     let collisionDist = targetCamDist;
     let collisionHeightBonus = 0;
 
     for (let i = 0; i < 3; i++) {
-      const testX = x - Math.sin(effectiveCamHeading) * collisionDist;
-      const testZ = z - Math.cos(effectiveCamHeading) * collisionDist;
+      const testX = x - Math.sin(this.cameraHeading) * collisionDist;
+      const testZ = z - Math.cos(this.cameraHeading) * collisionDist;
       const terrainHAtCam = this.terrain.getInterpolatedHeight(testX, testZ);
       
       if (isFinite(terrainHAtCam) && terrainHAtCam > h + 1.0) {
-        // If the terrain behind us is higher than the skier's feet, pull in and push up.
         collisionDist *= 0.75;
         collisionHeightBonus += 1.5;
       } else {
@@ -1311,18 +1367,16 @@ export class PlayerSkier {
       }
     }
 
-    // Smoothly interpolate the actual distance and height bonus to prevent popping/jitter
     if (this._currentCamDist === undefined) this._currentCamDist = targetCamDist;
     if (this._currentCamHeightBonus === undefined) this._currentCamHeightBonus = 0;
     
-    // Faster smoothing for pull-in (collision), slower for return
     const isPullingIn = collisionDist < this._currentCamDist;
     const distSmooth = 1 - Math.pow(isPullingIn ? 0.00001 : 0.001, frameDt);
     this._currentCamDist += (collisionDist - this._currentCamDist) * distSmooth;
     this._currentCamHeightBonus += (collisionHeightBonus - this._currentCamHeightBonus) * distSmooth;
 
-    const camX = x - Math.sin(effectiveCamHeading) * this._currentCamDist;
-    const camZ = z - Math.cos(effectiveCamHeading) * this._currentCamDist;
+    const camX = x - Math.sin(this.cameraHeading) * this._currentCamDist;
+    const camZ = z - Math.cos(this.cameraHeading) * this._currentCamDist;
     let camY = h + targetCamHeight + this._currentCamHeightBonus;
 
     const terrainHAtCamFinal = this.terrain.getInterpolatedHeight(camX, camZ);
@@ -1335,18 +1389,14 @@ export class PlayerSkier {
       camY = surfaceHAtCam + minHeightAboveGround;
     }
 
-    // NaN guard on camY
     if (!isFinite(camY)) camY = h + targetCamHeight;
 
-    // Frame-rate independent vertical smoothing — time constant ~1.8s prevents Y-axis jumpiness
     if (this._smoothCamY === undefined || !isFinite(this._smoothCamY)) this._smoothCamY = camY;
     const ySmooth = 1 - Math.pow(0.01, frameDt);
     this._smoothCamY += (camY - this._smoothCamY) * ySmooth;
     if (!isFinite(this._smoothCamY)) this._smoothCamY = camY;
 
-    // Aim focus point right at the skier's body/skis for a clear downward view
-    const lookYMultiplier = this.state === 'riding' ? 9.0 : 6.0;
-    const lookY = h + 0.4 + pitchForCam * lookYMultiplier;
+    const lookY = h + 0.4 + pitchForCam * 6.0;
     if (this._smoothLookY === undefined || !isFinite(this._smoothLookY)) this._smoothLookY = lookY;
     const lookYSmooth = 1 - Math.pow(0.005, frameDt);
     this._smoothLookY += (lookY - this._smoothLookY) * lookYSmooth;

@@ -266,8 +266,6 @@ export class Skiers {
         s.paragliding = false;
         if (s.chuteGroup) s.chuteGroup.visible = false;
         
-        // Determine if targetStation is p1 or p2
-        const isP1Base = (s.targetStation === s.targetLine.p1);
         let bestChair = null;
         let bestDiff = s.targetLine.type === 'tram' ? 0.12 : 0.08;
         
@@ -276,23 +274,12 @@ export class Skiers {
            const currentCount = chair.passengers ? chair.passengers.length : (chair.passenger ? 1 : 0);
            if (currentCount >= maxCap) continue;
            
-           if (isP1Base) {
-             // Upward direction from p1 is progress 0.0 -> 0.5 (or arriving at 0.98)
-             const pVal = (chair.progress >= 0.98) ? 0 : chair.progress;
-             if ((chair.progress >= 0.0 && chair.progress <= 0.09) || chair.progress >= 0.98) {
-               if (pVal < bestDiff) {
-                 bestDiff = pVal;
-                 bestChair = chair;
-               }
-             }
-           } else {
-             // Upward direction from p2 is progress 0.5 -> 1.0
-             if (chair.progress >= 0.50 && chair.progress <= 0.59) {
-               const diff = chair.progress - 0.50;
-               if (diff < bestDiff) {
-                 bestDiff = diff;
-                 bestChair = chair;
-               }
+           // Upward direction departing base station is progress 0.0 -> 0.05
+           const pVal = (chair.progress >= 0.985) ? 0 : chair.progress;
+           if ((chair.progress >= 0.0 && chair.progress <= 0.05) || chair.progress >= 0.985) {
+             if (pVal < bestDiff) {
+               bestDiff = pVal;
+               bestChair = chair;
              }
            }
         }
@@ -329,35 +316,27 @@ export class Skiers {
          } else if (isQuad) {
            yOffset = -0.52;
            const lateralOffset = ((s.seatIdx || 0) - 1.5) * 0.38;
-           // Align perpendicular to chair travel direction
-           xOffset = Math.cos(chairAngle + Math.PI / 2) * lateralOffset;
-           zOffset = Math.sin(chairAngle + Math.PI / 2) * lateralOffset;
+           // Lateral perpendicular offset (cos, -sin) in Three.js yaw coordinates
+           xOffset = Math.cos(chairAngle) * lateralOffset;
+           zOffset = -Math.sin(chairAngle) * lateralOffset;
          } else {
            // Double chair
            yOffset = -0.5;
            const lateralOffset = ((s.seatIdx || 0) - 0.5) * 0.35;
-           xOffset = Math.cos(chairAngle + Math.PI / 2) * lateralOffset;
-           zOffset = Math.sin(chairAngle + Math.PI / 2) * lateralOffset;
+           xOffset = Math.cos(chairAngle) * lateralOffset;
+           zOffset = -Math.sin(chairAngle) * lateralOffset;
          }
 
-         // sit or stand — keep wx/wz in sync with vehicle
+         // Keep wx/wz in sync with vehicle
          s.wx = p.x + xOffset;
          s.wz = p.z + zOffset;
          s.mesh.position.set(s.wx, p.y + yOffset, s.wz);
-         s.mesh.rotation.y = isTram ? chairAngle : (chairAngle + Math.PI / 2);
+         s.mesh.rotation.y = chairAngle;
          s.mesh.scale.setScalar(isTram ? 0.7 : 0.9);
 
-         const isP1Base = (s.targetStation === s.targetLine.p1);
          let reachedTop = false;
-
-         if (isP1Base) {
-           if (s.chair.progress >= 0.46 && s.chair.progress <= 0.53) {
-             reachedTop = true;
-           }
-         } else {
-           if (s.chair.progress >= 0.96 || s.chair.progress <= 0.03) {
-             reachedTop = true;
-           }
+         if (s.chair.progress >= 0.465 && s.chair.progress <= 0.505) {
+           reachedTop = true;
          }
          
          if (reachedTop) { 
@@ -382,15 +361,15 @@ export class Skiers {
 
             // Randomly choose left or right (-1 or 1)
             const sideOffset = Math.random() < 0.5 ? 1 : -1;
-            const pushAngle = chairAngle + sideOffset * 1.0; // Angled to the side (~60 degrees)
+            const pushAngle = chairAngle + sideOffset * 0.8; // Angled to the side (~45 degrees)
 
-            // push off
-            s.wx += Math.cos(pushAngle) * 3;
-            s.wz -= Math.sin(pushAngle) * 3;
+            // Push off
+            s.wx += Math.sin(pushAngle) * 3;
+            s.wz += Math.cos(pushAngle) * 3;
             
             // Give them a slight initial velocity in that direction
-            s.vx = Math.cos(pushAngle) * 4;
-            s.vz = -Math.sin(pushAngle) * 4;
+            s.vx = Math.sin(pushAngle) * 4;
+            s.vz = Math.cos(pushAngle) * 4;
 
             // Start skiing straight, they will only traverse if they get too close to others
             s.traverseTimeLeft = 0; 

@@ -680,6 +680,10 @@ function animate() {
   physicsAccumulator += Math.min(dt, 0.05); // Cap 
   
   while (physicsAccumulator >= PHYSICS_DT) {
+    // 1. Update lift positions first so chairs are at current physics state
+    chairlifts.update(PHYSICS_DT);
+
+    // 2. Update player skier physics
     if (isSkierMode) {
       const alive = playerSkier.update(PHYSICS_DT, chairlifts);
       if (!alive) {
@@ -689,9 +693,8 @@ function animate() {
       }
     }
     
-    // Simulations must run inside the physics step to stay perfectly synchronized
+    // 3. Update NPC skiers and river simulations
     skiers.update(PHYSICS_DT, water, chairlifts, isSnowing, clouds);
-    chairlifts.update(PHYSICS_DT);
     rivers.update(PHYSICS_DT);
     
     physicsAccumulator -= PHYSICS_DT;
