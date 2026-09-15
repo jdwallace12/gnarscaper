@@ -1005,9 +1005,14 @@ export class UI {
         <span><b>←/→/W/S</b> Look Around · <b>Space</b> Drop Skier</span>
         <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
       `;
+    } else if (state === 'snowmobile') {
+      el.innerHTML = `
+        <span>🏍️ <b>W/S</b> Throttle/Brake · <b>A/D</b> Steer · <b>Space</b> Launch off! · <b>E</b> Dismount · <b>N</b> Spawn new sled</span>
+        <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
+      `;
     } else {
       el.innerHTML = `
-        <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute</span>
+        <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute · <b>N</b> Snowmobile</span>
         <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
       `;
     }

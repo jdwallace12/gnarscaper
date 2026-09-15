@@ -24,6 +24,7 @@ import { UI } from './ui/UI.js';
 import { Clouds } from './engine/Clouds.js';
 import { PlayerSkier } from './engine/PlayerSkier.js';
 import { SnowGlints } from './engine/SnowGlints.js';
+import { Snowmobiles } from './engine/Snowmobiles.js';
 
 // ---- Boot ----
 (async () => {
@@ -61,6 +62,8 @@ const clouds = new Clouds(terrain);
 const playerSkier = new PlayerSkier(terrain);
 playerSkier.seaLevel = seaLevel;
 playerSkier.water = water;
+const snowmobiles = new Snowmobiles(terrain, seaLevel);
+playerSkier.setSnowmobileRegistry(snowmobiles);
 const snowGlints = new SnowGlints(terrain, 2500);
 
 scene.add(terrain.mesh);
@@ -73,6 +76,7 @@ scene.add(rivers.group);
 scene.add(snow.group);
 scene.add(clouds.group);
 scene.add(playerSkier.group);
+scene.add(snowmobiles.group);
 scene.add(snowGlints.group);
 clouds.updatePositions(seaLevel);
 
@@ -177,11 +181,14 @@ const ui = new UI({
   onResetCamera() { scene.resetCamera(); },
   onMobileControl(dir, active) {
     // Map D-pad directions to skier control keys
-    const skierKeyMap = { 'up': 'forward', 'down': 'brake', 'left': 'left', 'right': 'right', 'jump': 'jump', 'parachute': 'paraglide' };
+    const skierKeyMap = { 'up': 'forward', 'down': 'brake', 'left': 'left', 'right': 'right', 'jump': 'jump', 'parachute': 'paraglide', 'mount': 'mount' };
     if (playerSkier._keys && skierKeyMap[dir]) {
       playerSkier._keys[skierKeyMap[dir]] = active;
       if (dir === 'parachute' && active && playerSkier.toggleParachute) {
         playerSkier.toggleParachute();
+      }
+      if (dir === 'mount' && active) {
+        playerSkier._keys.mount = true;
       }
     }
     if (mobileMovement[dir] !== undefined) {
@@ -512,10 +519,13 @@ function exitSkierMode() {
   ui.showSkierHUD(false);
 }
 
-// Listen for Escape to exit ski mode
+// Listen for Escape to exit ski mode, N to spawn snowmobile
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && isSkierMode) {
     exitSkierMode();
+  }
+  if ((e.key === 'n' || e.key === 'N') && isSkierMode && playerSkier.active) {
+    playerSkier.spawnSnowmobileNearby();
   }
 });
 
@@ -563,10 +573,15 @@ function handleInteractStart(e) {
     boulders.removeNear(brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius);
     chairlifts.removeNear(brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius);
     rivers.removeNear(brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius);
+    snowmobiles.removeNear(brush.intersectionPoint.x, brush.intersectionPoint.z, worldRadius);
   }
 
   if (tool.isSkier) {
     skiers.spawn(brush.intersectionPoint.x, brush.intersectionPoint.z);
+  }
+
+  if (tool.isSnowmobile) {
+    snowmobiles.place(brush.intersectionPoint.x, brush.intersectionPoint.z);
   }
 
   if (tool.isChairlift || tool.isTram) {
@@ -674,6 +689,29 @@ function animate() {
       ui.setSkierControlsText(playerSkier.state);
       window.lastSkierState = playerSkier.state;
     }
+
+    // Snowmobile proximity mount hint
+    const nearSno = playerSkier._nearbySnowmobile;
+    if (!window._snowHintEl) {
+      const el = document.createElement('div');
+      el.id = 'snowmobile-mount-hint';
+      el.style.cssText = `
+        position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+        background: rgba(15,15,30,0.82); color: #fff;
+        padding: 8px 20px; border-radius: 20px;
+        font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 500;
+        border: 1.5px solid rgba(230,57,70,0.7);
+        box-shadow: 0 2px 16px rgba(230,57,70,0.25);
+        pointer-events: none; display: none; z-index: 900;
+        transition: opacity 0.2s;
+      `;
+      el.innerHTML = '🏍️ Press <b>E</b> to mount snowmobile';
+      document.body.appendChild(el);
+      window._snowHintEl = el;
+    }
+    window._snowHintEl.style.display = (nearSno && playerSkier.state === 'skiing') ? 'block' : 'none';
+  } else if (window._snowHintEl) {
+    window._snowHintEl.style.display = 'none';
   }
 
   // --- Physics & Simulation Loop ---
@@ -694,8 +732,10 @@ function animate() {
     }
     
     // 3. Update NPC skiers and river simulations
-    skiers.update(PHYSICS_DT, water, chairlifts, isSnowing, clouds);
+    skiers.update(PHYSICS_DT, water, chairlifts, isSnowing, clouds, snowmobiles);
     rivers.update(PHYSICS_DT);
+    // 4. Update snowmobiles (idle + NPC-driven)
+    snowmobiles.update(PHYSICS_DT);
     
     physicsAccumulator -= PHYSICS_DT;
   }
@@ -704,6 +744,7 @@ function animate() {
   if (isSkierMode) {
     const alpha = physicsAccumulator / PHYSICS_DT;
     playerSkier.interpolateVisuals(alpha, dt);
+    snowmobiles.interpolateVisuals(alpha); // all placed snowmobiles
     const cam = playerSkier.getCameraTarget(alpha, dt);
     scene.updateSkierCamera(cam.position, cam.lookAt, dt);
     ui.updateSkierSpeed(playerSkier.speed, playerSkier.isClimbing, playerSkier.y);
@@ -762,6 +803,9 @@ function animate() {
   
   const glintCenter = (isSkierMode && playerSkier.mesh) ? playerSkier.mesh.position : scene.camera.position;
   snowGlints.update(dt, glintCenter);
+
+  // Always update snowmobile visuals even outside skier mode (they're world objects)
+  if (!isSkierMode) snowmobiles.interpolateVisuals(1.0);
 
   if (isSkierMode) {
     // ...

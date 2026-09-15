@@ -906,6 +906,17 @@ export const TOOLS = {
     apply() { /* no-op — skier placement handled externally */ },
   },
 
+  snowmobile: {
+    name: 'Snowmobile',
+    icon: '🏍️',
+    color: '#e63946',
+    cursor: 'crosshair',
+    isBrush: false,
+    category: 'Skiing',
+    isSnowmobile: true,
+    apply() { /* no-op — snowmobile placement handled externally */ },
+  },
+
   chairlift: {
     name: 'Double Chair',
     icon: '🚡',

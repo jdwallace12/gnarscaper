@@ -171,8 +171,8 @@ export class Skiers {
     });
   }
 
-  /** Update all skiers — call each frame with deltaTime, water, and chairlifts ref */
-  update(dt, water, chairlifts, isSnowing = false, activeClouds = null) {
+  /** Update all skiers — call each frame with deltaTime, water, chairlifts, and snowmobiles refs */
+  update(dt, water, chairlifts, isSnowing = false, activeClouds = null, snowmobiles = null) {
     const gravity = 8.0; // Reduced from 10.0 for slower overall acceleration
     const friction = 0.97; // Increased base drag (was 0.98)
     const minSpeed = 0.001;
@@ -476,6 +476,51 @@ export class Skiers {
         continue;
       }
 
+      // --- Snowmobile NPC State ---
+      if (s.state === 'snowmobile') {
+        const sno = s._snowmobile;
+        if (!sno || !sno.active) {
+          // Snowmobile gone — resume skiing
+          if (s._snowmobile) { s._snowmobile.riderMounted = false; s._snowmobile._npcKeys = null; }
+          s._snowmobile = null;
+          s.state = 'skiing';
+          s.grounded = true;
+          if (s.chuteGroup) s.chuteGroup.visible = false;
+        } else {
+          s._npcRideTimer = (s._npcRideTimer || 0) + dt;
+
+          // Drive: throttle forward until the timer runs out or they hit a boundary
+          const rideTime = s._npcRideDuration || 5.0;
+          if (s._npcRideTimer >= rideTime) {
+            // Jump off! Launch NPC back into the air
+            const launch = sno.getLaunchVelocity();
+            sno.riderMounted = false;
+            sno._npcKeys = null;
+            s._snowmobile = null;
+
+            s.state = 'skiing';
+            s.grounded = false;
+            s.vy = launch.vy * 0.55; // Moderate air
+            s.vx = launch.vx;
+            s.vz = launch.vz;
+            s.speed = Math.sqrt(s.vx * s.vx + s.vz * s.vz);
+            const rp = sno.getRiderPosition();
+            s.wx = rp.x; s.wz = rp.z; s.y = rp.y;
+            s._npcRideTimer = 0;
+          } else {
+            // Follow the snowmobile
+            const rp = sno.getRiderPosition();
+            s.wx = rp.x; s.wz = rp.z; s.y = rp.y;
+            s.speed = sno.speed;
+            s.grounded = sno.grounded;
+            s.mesh.position.set(s.wx, s.y + 0.15, s.wz);
+            s.mesh.rotation.y = sno.heading;
+            if (s.chuteGroup) s.chuteGroup.visible = false;
+          }
+        }
+        continue;
+      }
+
       // --- Skiing State from here on ---
 
       // Get grid position (only for skiing state)
@@ -563,6 +608,31 @@ export class Skiers {
         const adz = (nearestBase.z - s.wz) / nearestBaseDist;
         s.vx += adx * attractStrength * dt;
         s.vz += adz * attractStrength * dt;
+      }
+
+      // Snowmobile proximity: mount a nearby free snowmobile if moving fast enough downhill
+      if (snowmobiles && s.speed > 1.5 && s.grounded && (s.timeAlive || 0) > 3.0) {
+        for (const sno of snowmobiles.snowmobiles) {
+          if (!sno.active || sno.riderMounted) continue;
+          const dx = sno.wx - s.wx;
+          const dz = sno.wz - s.wz;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist < 4.0) {
+            // Mount!
+            sno.riderMounted = true;
+            sno.heading = Math.atan2(s.vx, s.vz); // face skier's direction
+            // AI keys: always throttle forward
+            sno._npcKeys = { forward: true, left: false, right: false, brake: false, jump: false };
+            s._snowmobile = sno;
+            s.state = 'snowmobile';
+            s._npcRideTimer = 0;
+            s._npcRideDuration = 4.0 + Math.random() * 6.0; // ride 4–10 seconds
+            s.mesh.visible = true;
+            if (s.chuteGroup) s.chuteGroup.visible = false;
+            break;
+          }
+        }
+        if (s.state === 'snowmobile') continue;
       }
 
       // Skier-to-skier repulsion using Spatial Hash

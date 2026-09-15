@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Water } from './Water.js';
+import { Snowmobile } from './Snowmobile.js';
 
 /**
  * Player-controlled skier for 3rd-person ski mode.
@@ -49,13 +50,18 @@ export class PlayerSkier {
     this._prevY = 0;
 
     // Chairlift State
-    this.state = 'skiing'; // 'skiing', 'waiting', 'riding'
+    this.state = 'skiing'; // 'skiing', 'waiting', 'riding', 'snowmobile'
     this.targetLine = null;
     this.chair = null;
     this.targetStation = null;
     this._waitingTime = 0;
     this._chairLookYaw = 0;   // Free-look yaw offset while on chairlift
     this._chairLookPitch = 0; // Free-look pitch while on chairlift
+
+    // Snowmobile State
+    this.snowmobile = null;       // Active Snowmobile instance when riding
+    this._nearbySnowmobile = null; // Snowmobile in range that can be mounted
+    this._snowmobileRegistry = null; // Shared Snowmobiles registry (set by main.js)
 
     // Pre-allocated vectors (avoid GC micro-pauses from per-frame allocations)
     this._camPosVec = new THREE.Vector3();
@@ -124,6 +130,9 @@ export class PlayerSkier {
     // Bind input handlers
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
+
+    // Extended keys for snowmobile
+    this._keys.mount = false; // E key
   }
 
   /** Spawn the player skier at world position (wx, wz) facing downhill */
@@ -197,8 +206,15 @@ export class PlayerSkier {
   /** Remove the player skier and clean up */
   despawn() {
     this.active = false;
-    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false, paraglide: false, grab: false };
+    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false, paraglide: false, grab: false, mount: false };
     this.paragliding = false;
+
+    // Despawn active snowmobile if player was riding one
+    if (this.snowmobile) {
+      this.snowmobile.riderMounted = false;
+      this.snowmobile = null;
+    }
+    this._nearbySnowmobile = null;
     this.cameraPitch = 0;
     this.airSpinYaw = 0;
     this.airSpinPitch = 0;
@@ -292,6 +308,8 @@ export class PlayerSkier {
       return this._updateWaiting(dt);
     } else if (this.state === 'riding') {
       return this._updateRiding(dt);
+    } else if (this.state === 'snowmobile') {
+      return this._updateSnowmobile(dt);
     }
 
     this._prevWx = this.wx;
@@ -313,6 +331,18 @@ export class PlayerSkier {
     // Chairlift Detection (only check if grounded and near a potential base)
     if (this.grounded && chairlifts) {
       this._checkChairliftBoarding(chairlifts);
+    }
+
+    // Snowmobile proximity + mount detection
+    this._checkSnowmobileMount();
+
+    // Handle E-key mount press
+    if (this._keys.mount) {
+      this._keys.mount = false; // consume
+      if (this._nearbySnowmobile && this.state === 'skiing' && this.grounded) {
+        this._mountSnowmobile(this._nearbySnowmobile);
+        return true;
+      }
     }
 
     // Compute terrain gradient
@@ -821,6 +851,135 @@ export class PlayerSkier {
       }
     }
 
+    // Snowmobile update (physics) — idle (non-mounted) ones are handled by Snowmobiles manager
+    // Nothing extra needed here since Snowmobiles.update() covers them.
+
+    return true;
+  }
+
+  // ---- Snowmobile helpers ----
+
+  /** Register the shared Snowmobiles manager so player can access world snowmobiles */
+  setSnowmobileRegistry(registry) {
+    this._snowmobileRegistry = registry;
+  }
+
+  /** Spawn a new snowmobile slightly ahead of the player via the shared registry */
+  spawnSnowmobileNearby() {
+    if (this.state !== 'skiing') return;
+    const registry = this._snowmobileRegistry;
+    if (!registry) return;
+    const spawnX = this.wx + Math.sin(this.heading) * 4.0;
+    const spawnZ = this.wz + Math.cos(this.heading) * 4.0;
+    return registry.place(spawnX, spawnZ, this.heading);
+  }
+
+  /** Check if a snowmobile is close enough to mount */
+  _checkSnowmobileMount() {
+    if (this.state !== 'skiing') { this._nearbySnowmobile = null; return; }
+    const list = this._snowmobileRegistry ? this._snowmobileRegistry.snowmobiles : [];
+    let closest = null;
+    let closestDist = 3.5; // mount radius
+    for (const sno of list) {
+      if (!sno.active || sno.riderMounted) continue;
+      const d = sno.distanceTo(this.wx, this.wz);
+      if (d < closestDist) { closestDist = d; closest = sno; }
+    }
+    this._nearbySnowmobile = closest;
+  }
+
+  /** Mount a snowmobile — transition to 'snowmobile' state */
+  _mountSnowmobile(sno) {
+    this.snowmobile = sno;
+    sno.riderMounted = true;
+    sno.heading = this.heading;
+    this.state = 'snowmobile';
+    this.vx = 0; this.vz = 0; this.vy = 0; this.speed = 0;
+    this.grounded = false;
+    this.isClimbing = false;
+    this.paragliding = false;
+    this._nearbySnowmobile = null;
+  }
+
+  /** Dismount snowmobile — player leaps off and returns to skiing mid-air */
+  _dismountSnowmobile(jump = false) {
+    const sno = this.snowmobile;
+    if (!sno) { this.state = 'skiing'; return; }
+
+    const launch = sno.getLaunchVelocity();
+    sno.riderMounted = false;
+    // Give snowmobile momentum to coast away
+    sno.vx = sno.vx * 0.5;
+    sno.vz = sno.vz * 0.5;
+
+    this.snowmobile = null;
+    this.state = 'skiing';
+    this.grounded = false;
+    this.paragliding = false;
+
+    // Teleport player to rider position
+    const rp = sno.getRiderPosition();
+    this.wx = rp.x;
+    this.wz = rp.z;
+    this.y  = rp.y;
+
+    // Apply launch physics — big air!
+    this.vx = launch.vx;
+    this.vz = launch.vz;
+    this.vy = jump ? launch.vy : Math.max(launch.vy * 0.4, 3.0);
+    this.heading = launch.heading;
+    this.speed = Math.sqrt(this.vx * this.vx + this.vz * this.vz);
+
+    // Reset air tricks
+    this.airSpinYaw = 0;
+    this.airSpinPitch = 0;
+    this.airGrabName = null;
+    this.airGrabTime = 0;
+    this.airTime = 0;
+  }
+
+  /** Physics update loop while riding the snowmobile */
+  _updateSnowmobile(dt) {
+    const sno = this.snowmobile;
+    if (!sno || !sno.active) {
+      this.state = 'skiing';
+      this.grounded = true;
+      return true;
+    }
+
+    this._prevWx = this.wx;
+    this._prevWz = this.wz;
+    this._prevY = this.y;
+
+    // Space bar = dramatic jump off!
+    if (this._keys.jump) {
+      this._keys.jump = false;
+      this._dismountSnowmobile(true);
+      return true;
+    }
+
+    // E key = calm dismount
+    if (this._keys.mount) {
+      this._keys.mount = false;
+      this._dismountSnowmobile(false);
+      return true;
+    }
+
+    // Drive the snowmobile with player inputs
+    sno.update(dt, this._keys);
+
+    // Sync player position to snowmobile
+    const rp = sno.getRiderPosition();
+    this.wx = rp.x;
+    this.wz = rp.z;
+    this.y  = rp.y;
+    this.heading = sno.heading;
+    this.speed = sno.speed;
+    this.vx = sno.vx;
+    this.vz = sno.vz;
+    this.vy = sno.vy;
+    this.grounded = sno.grounded;
+
     return true;
   }
 
@@ -998,6 +1157,56 @@ export class PlayerSkier {
   /** Interpolate visual position between prev and current physics state for sub-frame accuracy */
   interpolateVisuals(alpha, dt) {
     if (!this.active || !this.mesh) return;
+
+    // Snowmobile visuals are handled by Snowmobiles.interpolateVisuals() in main.js
+    // (no longer done here)
+    if (this.state === 'snowmobile' && this.snowmobile) {
+      // Rider is ON the snowmobile — seat the skier mesh on it
+      const sno = this.snowmobile;
+      const rp = sno.getRiderPosition();
+      this.mesh.position.set(rp.x, rp.y + 0.15, rp.z);
+      this.mesh.rotation.y = sno.mesh ? sno.mesh.rotation.y : sno.heading;
+      this.mesh.rotation.x = -0.2; // lean forward like a rider
+      this.mesh.rotation.z = sno.mesh ? sno.mesh.rotation.z * 0.5 : 0;
+
+      // Seated snowmobile riding pose
+      if (this._leftLeg && this._rightLeg) {
+        this._leftLeg.rotation.x = -1.4;
+        this._rightLeg.rotation.x = -1.4;
+        this._leftLeg.position.set(-0.07, 0.10, 0.08);
+        this._rightLeg.position.set(0.07, 0.10, 0.08);
+      }
+      if (this._leftSki && this._rightSki) {
+        this._leftSki.rotation.x = 0;
+        this._rightSki.rotation.x = 0;
+        this._leftSki.rotation.y = 0;
+        this._rightSki.rotation.y = 0;
+        this._leftSki.rotation.z = 0;
+        this._rightSki.rotation.z = 0;
+        this._leftSki.position.set(-0.09, -0.08, 0.20);
+        this._rightSki.position.set(0.09, -0.08, 0.20);
+      }
+      if (this._leftPole && this._rightPole) {
+        // Arms forward gripping handlebars
+        this._leftPole.rotation.x = 1.4;
+        this._rightPole.rotation.x = 1.4;
+        this._leftPole.rotation.z = -0.3;
+        this._rightPole.rotation.z = 0.3;
+        this._leftPole.position.set(-0.14, 0.30, 0.28);
+        this._rightPole.position.set(0.14, 0.30, 0.28);
+      }
+      if (this._torso) {
+        this._torso.rotation.x = -0.2;
+        this._torso.position.set(0, 0.28, 0);
+      }
+      if (this._head) this._head.rotation.set(0, 0, 0);
+      if (this._helmet) this._helmet.rotation.set(0, 0, 0);
+
+      if (this._leftTrail) this._leftTrail.visible = false;
+      if (this._rightTrail) this._rightTrail.visible = false;
+      if (this._parachute) this._parachute.visible = false;
+      return;
+    }
 
     if (this.state === 'riding') {
       // Lock visuals directly to chair mesh for 100% jitter-free synchronization
@@ -1291,6 +1500,35 @@ export class PlayerSkier {
 
   /** Get the chase camera target position and look-at (uses pre-allocated vectors) */
   getCameraTarget(alpha, dt) {
+    // Snowmobile camera — wider, higher, speed-scaled pull-back
+    if (this.state === 'snowmobile' && this.snowmobile) {
+      const sno = this.snowmobile;
+      const camDist = 8.0 + Math.min(sno.speed * 0.3, 6.0); // Pull back at high speed
+      const camHeight = 5.5 + Math.min(sno.speed * 0.1, 3.0);
+
+      // Smooth heading lag for the snowmobile camera
+      if (this._snowCamHeading === undefined) this._snowCamHeading = sno.heading;
+      let hdiff = sno.heading - this._snowCamHeading;
+      while (hdiff < -Math.PI) hdiff += Math.PI * 2;
+      while (hdiff >  Math.PI) hdiff -= Math.PI * 2;
+      this._snowCamHeading += hdiff * Math.min(1, 5.0 * (dt || 0.016));
+
+      const cx = sno.wx - Math.sin(this._snowCamHeading) * camDist;
+      const cz = sno.wz - Math.cos(this._snowCamHeading) * camDist;
+      let cy = sno.y + camHeight;
+
+      // Keep camera above terrain
+      const terrH = this.terrain.getInterpolatedHeight(cx, cz);
+      if (isFinite(terrH) && cy < terrH + 2.5) cy = terrH + 2.5;
+
+      if (this._snowCamY === undefined) this._snowCamY = cy;
+      this._snowCamY += (cy - this._snowCamY) * Math.min(1, 4.0 * (dt || 0.016));
+
+      this._camPosVec.set(cx, this._snowCamY, cz);
+      this._lookAtVec.set(sno.wx, sno.y + 1.0, sno.wz);
+      return { position: this._camPosVec, lookAt: this._lookAtVec };
+    }
+
     // Dedicated rock-solid ride camera when on a chairlift or tram
     if (this.state === 'riding' && this.chair && this.chair.mesh) {
       const cp = this.chair.mesh.position;
@@ -1445,6 +1683,7 @@ export class PlayerSkier {
         this.toggleParachute();
         break;
       case ' ':            e.preventDefault(); this._keys.jump = true; break;
+      case 'e': case 'E':  e.preventDefault(); this._keys.mount = true; break;
     }
   }
 
@@ -1457,6 +1696,7 @@ export class PlayerSkier {
       case 'Shift':      case 'z': case 'Z': case 'c': case 'C': this._keys.grab = false; break;
       case 'x': case 'X':  this._keys.paraglide = false; break;
       case ' ':            this._keys.jump = false; break;
+      case 'e': case 'E':  this._keys.mount = false; break;
     }
   }
 
