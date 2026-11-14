@@ -19,6 +19,7 @@ export class Snowmobiles {
     const sno = new Snowmobile(this.terrain, this.seaLevel);
     sno.spawn(wx, wz);
     sno.heading = heading;
+    if (this._trailsVisible !== undefined) sno.setTrailsVisible(this._trailsVisible);
     this.snowmobiles.push(sno);
     this.group.add(sno.group);
     return sno;
@@ -68,6 +69,13 @@ export class Snowmobiles {
   interpolateVisuals(alpha) {
     for (const sno of this.snowmobiles) {
       if (sno.active) sno.interpolateVisuals(alpha);
+    }
+  }
+
+  setTrailsVisible(visible) {
+    this._trailsVisible = visible;
+    for (const sno of this.snowmobiles) {
+      sno.setTrailsVisible(visible);
     }
   }
 }

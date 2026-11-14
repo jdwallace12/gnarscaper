@@ -198,6 +198,7 @@ const ui = new UI({
   onToggleTrails(checked) {
     skiers.setTrailsVisible(checked);
     playerSkier.setTrailsVisible(checked);
+    snowmobiles.setTrailsVisible(checked);
   },
   onUndo() { doUndo(); },
   onRedo() { doRedo(); },

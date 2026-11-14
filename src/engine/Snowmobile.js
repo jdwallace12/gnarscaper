@@ -41,10 +41,28 @@ export class Snowmobile {
       roughness: 1.0,
     });
 
-    // Skidoo track (single centre line in dark grey)
-    this._trackMat = new THREE.LineBasicMaterial({ color: 0x4a4a4a, transparent: true, opacity: 0.7 });
-    this._trackPoints = [];
-    this._trackLine = null;
+    // Wide track materials (solid compressed snow ribbon + dark edge rails & cleat ridges)
+    this._trackRibbonMat = new THREE.MeshBasicMaterial({
+      color: 0x3d4e61,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this._trackLineMat = new THREE.LineBasicMaterial({
+      color: 0x2a3848,
+      transparent: true,
+      opacity: 0.85,
+    });
+    this._maxTrackSteps = 2000;
+    this._ribbonPoints = [];
+    this._linePoints = [];
+    this._lastTrackLeft = null;
+    this._lastTrackRight = null;
+    this._lastTrackCenter = null;
+    this._trackRibbon = null;
+    this._trackLines = null;
+    this._trailsVisible = true;
 
     // Previous physics state for visual interpolation
     this._prevWx = 0;
@@ -88,16 +106,29 @@ export class Snowmobile {
     this.mesh.position.set(wx, h + this._groundOffset(), wz);
     this.group.add(this.mesh);
 
-    // Build track line
-    const maxTrackVerts = 3000;
-    const trackGeo = new THREE.BufferGeometry();
-    const trackPositions = new Float32Array(maxTrackVerts * 3);
-    trackGeo.setAttribute('position', new THREE.BufferAttribute(trackPositions, 3));
-    trackGeo.setDrawRange(0, 0);
-    this._trackLine = new THREE.Line(trackGeo, this._trackMat);
-    this._trackLine.frustumCulled = false;
-    this.group.add(this._trackLine);
-    this._trackPoints = [];
+    // Wide Track: ribbon mesh + tread lines
+    const maxVerts = this._maxTrackSteps * 6;
+    const ribbonGeo = new THREE.BufferGeometry();
+    ribbonGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxVerts * 3), 3));
+    ribbonGeo.setDrawRange(0, 0);
+    this._trackRibbon = new THREE.Mesh(ribbonGeo, this._trackRibbonMat);
+    this._trackRibbon.frustumCulled = false;
+    this._trackRibbon.visible = this._trailsVisible;
+    this.group.add(this._trackRibbon);
+
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxVerts * 3), 3));
+    lineGeo.setDrawRange(0, 0);
+    this._trackLines = new THREE.LineSegments(lineGeo, this._trackLineMat);
+    this._trackLines.frustumCulled = false;
+    this._trackLines.visible = this._trailsVisible;
+    this.group.add(this._trackLines);
+
+    this._ribbonPoints = [];
+    this._linePoints = [];
+    this._lastTrackLeft = null;
+    this._lastTrackRight = null;
+    this._lastTrackCenter = null;
   }
 
   despawn() {
@@ -108,12 +139,21 @@ export class Snowmobile {
       this.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); });
       this.mesh = null;
     }
-    if (this._trackLine) {
-      this.group.remove(this._trackLine);
-      this._trackLine.geometry.dispose();
-      this._trackLine = null;
+    if (this._trackRibbon) {
+      this.group.remove(this._trackRibbon);
+      this._trackRibbon.geometry.dispose();
+      this._trackRibbon = null;
     }
-    this._trackPoints = [];
+    if (this._trackLines) {
+      this.group.remove(this._trackLines);
+      this._trackLines.geometry.dispose();
+      this._trackLines = null;
+    }
+    this._ribbonPoints = [];
+    this._linePoints = [];
+    this._lastTrackLeft = null;
+    this._lastTrackRight = null;
+    this._lastTrackCenter = null;
     for (const p of this._exhaustPool) {
       this.group.remove(p.mesh);
     }
@@ -338,34 +378,109 @@ export class Snowmobile {
   _groundOffset() { return 0.18; }
 
   // -------------------------------------------------------------------------
-  // Track trail
+  // Track trail (wide packed tread ribbon + outer rails and cross cleats)
   // -------------------------------------------------------------------------
   _updateTrack() {
-    if (!this._trackLine || !this.grounded || this.speed < 0.3) return;
-    const maxVerts = 3000;
-    const pts = this._trackPoints;
-
-    // Only add a point if moved enough
-    const lastIdx = pts.length - 3;
-    if (lastIdx >= 0) {
-      const dx = this.wx - pts[lastIdx];
-      const dz = this.wz - pts[lastIdx + 2];
-      if (dx * dx + dz * dz < 0.04) return;
+    if (!this._trackRibbon || !this._trackLines || !this.grounded || this.speed < 0.3) {
+      this._lastTrackLeft = null;
+      this._lastTrackRight = null;
+      this._lastTrackCenter = null;
+      return;
     }
 
-    const groundH = this.terrain.getInterpolatedHeight(this.wx, this.wz);
-    const trackY = (isFinite(groundH) ? groundH : this.y) + 0.15;
-    pts.push(this.wx, trackY, this.wz);
-    if (pts.length > maxVerts * 3) {
-      this._trackPoints = pts.slice(pts.length - maxVerts * 3);
+    const heading = this.heading;
+    const cosH = Math.cos(heading);
+    const sinH = Math.sin(heading);
+    const halfWidth = 0.24; // 0.48 units total wide track width
+
+    // Left and right track edge world coordinates
+    const lx = this.wx - cosH * halfWidth;
+    const lz = this.wz + sinH * halfWidth;
+    const rx = this.wx + cosH * halfWidth;
+    const rz = this.wz - sinH * halfWidth;
+
+    const groundL = this.terrain.getInterpolatedHeight(lx, lz);
+    const groundR = this.terrain.getInterpolatedHeight(rx, rz);
+    const ly = (isFinite(groundL) ? groundL : this.y) + 0.15;
+    const ry = (isFinite(groundR) ? groundR : this.y) + 0.15;
+
+    let shouldAdd = false;
+    if (this._lastTrackLeft && this._lastTrackRight && this._lastTrackCenter) {
+      const dx = this.wx - this._lastTrackCenter.x;
+      const dz = this.wz - this._lastTrackCenter.z;
+      if (dx * dx + dz * dz >= 0.09) { // >= 0.30 units spacing
+        shouldAdd = true;
+      }
+    } else {
+      this._lastTrackLeft = { x: lx, y: ly, z: lz };
+      this._lastTrackRight = { x: rx, y: ry, z: rz };
+      this._lastTrackCenter = { x: this.wx, z: this.wz };
     }
 
-    const posAttr = this._trackLine.geometry.attributes.position;
-    const count = Math.min(this._trackPoints.length, maxVerts * 3);
-    const offset = this._trackPoints.length - count;
-    posAttr.array.set(this._trackPoints.slice(offset, offset + count));
-    posAttr.needsUpdate = true;
-    this._trackLine.geometry.setDrawRange(0, count / 3);
+    if (shouldAdd) {
+      const pL = this._lastTrackLeft;
+      const pR = this._lastTrackRight;
+
+      // 1. Ribbon Mesh: 2 triangles forming a continuous quad belt (6 vertices = 18 floats)
+      this._ribbonPoints.push(
+        pL.x, pL.y, pL.z,
+        pR.x, pR.y, pR.z,
+        lx, ly, lz,
+
+        lx, ly, lz,
+        pR.x, pR.y, pR.z,
+        rx, ry, rz
+      );
+
+      // 2. Line Segments: Left rail, Right rail, and Cross cleat ridge (6 vertices = 18 floats)
+      this._linePoints.push(
+        // Left edge rail
+        pL.x, pL.y, pL.z, lx, ly, lz,
+        // Right edge rail
+        pR.x, pR.y, pR.z, rx, ry, rz,
+        // Cross rubber cleat ridge
+        lx, ly, lz, rx, ry, rz
+      );
+
+      this._lastTrackLeft.x = lx;
+      this._lastTrackLeft.y = ly;
+      this._lastTrackLeft.z = lz;
+
+      this._lastTrackRight.x = rx;
+      this._lastTrackRight.y = ry;
+      this._lastTrackRight.z = rz;
+
+      this._lastTrackCenter.x = this.wx;
+      this._lastTrackCenter.z = this.wz;
+
+      const maxVerts = this._maxTrackSteps * 6;
+      const maxFloats = maxVerts * 3;
+
+      if (this._ribbonPoints.length > maxFloats) {
+        this._ribbonPoints = this._ribbonPoints.slice(this._ribbonPoints.length - maxFloats);
+      }
+      if (this._linePoints.length > maxFloats) {
+        this._linePoints = this._linePoints.slice(this._linePoints.length - maxFloats);
+      }
+
+      // Update Ribbon Geometry
+      const rPosAttr = this._trackRibbon.geometry.attributes.position;
+      rPosAttr.array.set(this._ribbonPoints);
+      rPosAttr.needsUpdate = true;
+      this._trackRibbon.geometry.setDrawRange(0, this._ribbonPoints.length / 3);
+
+      // Update Line Geometry
+      const lPosAttr = this._trackLines.geometry.attributes.position;
+      lPosAttr.array.set(this._linePoints);
+      lPosAttr.needsUpdate = true;
+      this._trackLines.geometry.setDrawRange(0, this._linePoints.length / 3);
+    }
+  }
+
+  setTrailsVisible(visible) {
+    this._trailsVisible = visible;
+    if (this._trackRibbon) this._trackRibbon.visible = visible;
+    if (this._trackLines) this._trackLines.visible = visible;
   }
 
   // -------------------------------------------------------------------------
@@ -572,9 +687,9 @@ export class Snowmobile {
     g.add(strutR);
 
     // ---- Rear Drive Track ----
-    // Main rubber track (wide flat undercarriage)
+    // Wide utility rubber drive track (wide flat undercarriage)
     const track = new THREE.Mesh(
-      new THREE.BoxGeometry(0.42, 0.06, 0.90),
+      new THREE.BoxGeometry(0.48, 0.06, 0.90),
       this._trackRubberMat
     );
     track.position.set(0, 0.04, -0.22);
@@ -584,7 +699,7 @@ export class Snowmobile {
     // Track ridges (decorative rubber cleats)
     for (let i = 0; i < 7; i++) {
       const cleat = new THREE.Mesh(
-        new THREE.BoxGeometry(0.44, 0.03, 0.04),
+        new THREE.BoxGeometry(0.50, 0.03, 0.04),
         this._trackRubberMat
       );
       cleat.position.set(0, 0.075, -0.58 + i * 0.18);

@@ -70,6 +70,9 @@ export class Skiers {
     this._snowPool = [];
     this._snowPoolSize = 600;
     this._trailsVisible = true;
+
+    // Shared dual ski carving material matching player skier (cool crisp shadow groove)
+    this._trailMat = new THREE.LineBasicMaterial({ color: 0x4a7298, transparent: true, opacity: 0.9 });
   }
 
   _buildParachute(colorHex) {
@@ -138,13 +141,15 @@ export class Skiers {
     const chuteColor = PARACHUTE_COLORS[Math.floor(Math.random() * PARACHUTE_COLORS.length)];
     const chuteGroup = this._buildParachute(chuteColor);
 
-    // Trail line (ski tracks)
-    const trailMat = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.9 });
+    // Dual ski carving tracks matching player skier
+    const maxTrailVerts = 4000;
     const trailGeo = new THREE.BufferGeometry();
-    const trailPositions = new Float32Array(2000 * 3); // max 2000 trail points
+    const trailPositions = new Float32Array(maxTrailVerts * 3);
     trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
     trailGeo.setDrawRange(0, 0);
-    const trail = new THREE.Line(trailGeo, trailMat);
+    const trail = new THREE.LineSegments(trailGeo, this._trailMat);
+    trail.frustumCulled = false;
+    trail.visible = this._trailsVisible;
     this.group.add(trail);
 
     this.skiers.push({
@@ -156,6 +161,9 @@ export class Skiers {
       active: true,
       trail,
       trailPoints: [],
+      trailStartIndex: 0,
+      _lastLeftPoint: null,
+      _lastRightPoint: null,
       speed: 0,
       timeAlive: 0,
       state: 'skiing',
@@ -195,12 +203,12 @@ export class Skiers {
     for (const s of this.skiers) {
       if (s.trailStartIndex === undefined) s.trailStartIndex = 0;
 
-      // Trail Fading/Overwriting
-      let fadePointsCount = isSnowing ? 6 : 0; // If snowing everywhere, remove old tracks rapidly
+      // Trail Fading/Overwriting (in steps of 12 floats = 2 segments = 1 left+right pair)
+      let fadePointsCount = isSnowing ? 12 : 0; // If snowing everywhere, remove old tracks rapidly
       
-      // Advance start index if we exceed max points
-      if (s.active && (s.trailPoints.length - s.trailStartIndex) >= 2000 * 3) {
-        s.trailStartIndex += 3;
+      // Advance start index if we exceed max points (4000 vertices * 3 = 12000 floats)
+      if (s.active && (s.trailPoints.length - s.trailStartIndex) >= 4000 * 3) {
+        s.trailStartIndex += 12;
       }
       
       if (fadePointsCount > 0 && (s.trailPoints.length - s.trailStartIndex) > 0) {
@@ -210,7 +218,7 @@ export class Skiers {
       let activeLength = s.trailPoints.length - s.trailStartIndex;
       
       // Amortize garbage collection by periodically dumping old points from memory
-      if (s.trailStartIndex > 3000 * 3) {
+      if (s.trailStartIndex > 6000 * 3) {
         s.trailPoints = s.trailPoints.slice(s.trailStartIndex);
         s.trailStartIndex = 0;
       }
@@ -358,6 +366,8 @@ export class Skiers {
             s.trailPoints = [];
             s.trailStartIndex = 0;
             s.trail.geometry.setDrawRange(0, 0);
+            s._lastLeftPoint = null;
+            s._lastRightPoint = null;
 
             // Randomly choose left or right (-1 or 1)
             const sideOffset = Math.random() < 0.5 ? 1 : -1;
@@ -966,8 +976,53 @@ export class Skiers {
         s.mesh.rotation.x += (targetPitch - s.mesh.rotation.x) * 4.0 * dt;
       }
 
-      // Trail points appending
-      s.trailPoints.push(s.wx, s.y + 0.15, s.wz);
+      // Dual Trail points appending (left and right ski tracks matching player skier)
+      if (s.grounded && s.speed > 0.3) {
+        const heading = s.mesh.rotation.y;
+        const cosH = Math.cos(heading);
+        const sinH = Math.sin(heading);
+        const skiOffset = 0.08;
+
+        const lx = s.wx - cosH * skiOffset;
+        const lz = s.wz + sinH * skiOffset;
+        const rx = s.wx + cosH * skiOffset;
+        const rz = s.wz - sinH * skiOffset;
+
+        const groundL = this.terrain.getInterpolatedHeight(lx, lz);
+        const groundR = this.terrain.getInterpolatedHeight(rx, rz);
+        const leftY = (isFinite(groundL) ? groundL : s.y) + 0.15;
+        const rightY = (isFinite(groundR) ? groundR : s.y) + 0.15;
+
+        let shouldAdd = false;
+        if (s._lastLeftPoint && s._lastRightPoint) {
+          const dx = lx - s._lastLeftPoint.x;
+          const dz = lz - s._lastLeftPoint.z;
+          if (dx * dx + dz * dz >= 0.09) { // >= 0.30 units spacing
+            shouldAdd = true;
+          }
+        } else {
+          s._lastLeftPoint = { x: lx, y: leftY, z: lz };
+          s._lastRightPoint = { x: rx, y: rightY, z: rz };
+        }
+
+        if (shouldAdd) {
+          // Push left segment (p_last -> p_curr)
+          s.trailPoints.push(s._lastLeftPoint.x, s._lastLeftPoint.y, s._lastLeftPoint.z, lx, leftY, lz);
+          // Push right segment (p_last -> p_curr)
+          s.trailPoints.push(s._lastRightPoint.x, s._lastRightPoint.y, s._lastRightPoint.z, rx, rightY, rz);
+
+          s._lastLeftPoint.x = lx;
+          s._lastLeftPoint.y = leftY;
+          s._lastLeftPoint.z = lz;
+
+          s._lastRightPoint.x = rx;
+          s._lastRightPoint.y = rightY;
+          s._lastRightPoint.z = rz;
+        }
+      } else {
+        s._lastLeftPoint = null;
+        s._lastRightPoint = null;
+      }
     }
 
     // Sync InstancedMesh
@@ -1027,6 +1082,8 @@ export class Skiers {
       s.trailPoints = [];
       s.trailStartIndex = 0;
       s.trail.geometry.setDrawRange(0, 0);
+      s._lastLeftPoint = null;
+      s._lastRightPoint = null;
       s.stuckCount = 0;
       s.stuckTime = 0;
       return;
@@ -1044,6 +1101,8 @@ export class Skiers {
       s.trailPoints = [];
       s.trailStartIndex = 0;
       s.trail.geometry.setDrawRange(0, 0);
+      s._lastLeftPoint = null;
+      s._lastRightPoint = null;
       s.stuckCount = 0;
       s.stuckTime = 0;
       return;
@@ -1122,7 +1181,6 @@ export class Skiers {
     for (const s of this.skiers) {
       this.group.remove(s.trail);
       s.trail.geometry.dispose();
-      s.trail.material.dispose();
       if (s.chuteGroup) {
         this.group.remove(s.chuteGroup);
         s.chuteGroup.traverse(child => {
