@@ -95,6 +95,7 @@ export class Snowmobile {
     trackGeo.setAttribute('position', new THREE.BufferAttribute(trackPositions, 3));
     trackGeo.setDrawRange(0, 0);
     this._trackLine = new THREE.Line(trackGeo, this._trackMat);
+    this._trackLine.frustumCulled = false;
     this.group.add(this._trackLine);
     this._trackPoints = [];
   }
@@ -352,7 +353,9 @@ export class Snowmobile {
       if (dx * dx + dz * dz < 0.04) return;
     }
 
-    pts.push(this.wx, this.y + 0.02, this.wz);
+    const groundH = this.terrain.getInterpolatedHeight(this.wx, this.wz);
+    const trackY = (isFinite(groundH) ? groundH : this.y) + 0.15;
+    pts.push(this.wx, trackY, this.wz);
     if (pts.length > maxVerts * 3) {
       this._trackPoints = pts.slice(pts.length - maxVerts * 3);
     }

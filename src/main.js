@@ -316,6 +316,7 @@ function doReset() {
   trees.clear();
   boulders.clear();
   skiers.clear();
+  playerSkier.clearTrails();
   chairlifts.clear();
   rivers.clear();
   clouds.updatePositions(seaLevel);
@@ -444,6 +445,7 @@ function loadMapData(data) {
   chairlifts.clear();
   rivers.clear();
   skiers.clear();
+  playerSkier.clearTrails();
   clouds.updatePositions(seaLevel);
   
   // Restore Trees

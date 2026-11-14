@@ -68,12 +68,27 @@ export class PlayerSkier {
     this._lookAtVec = new THREE.Vector3();
 
     // Dual Ski Carving Trails (clean crisp powder blue shadow grooves)
-    this._trailMat = new THREE.LineBasicMaterial({ color: 0x6897c4, transparent: true, opacity: 0.88 });
-    this._leftTrail = null;
-    this._rightTrail = null;
+    this._trailMat = new THREE.LineBasicMaterial({ color: 0x4a7298, transparent: true, opacity: 0.9 });
+    this._maxTrailVerts = 40000;
     this._leftTrailPoints = [];
     this._rightTrailPoints = [];
+    this._lastLeftPoint = null;
+    this._lastRightPoint = null;
     this._trailsVisible = true;
+
+    const leftGeo = new THREE.BufferGeometry();
+    leftGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this._maxTrailVerts * 3), 3));
+    leftGeo.setDrawRange(0, 0);
+    this._leftTrail = new THREE.LineSegments(leftGeo, this._trailMat);
+    this._leftTrail.frustumCulled = false;
+    this.group.add(this._leftTrail);
+
+    const rightGeo = new THREE.BufferGeometry();
+    rightGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this._maxTrailVerts * 3), 3));
+    rightGeo.setDrawRange(0, 0);
+    this._rightTrail = new THREE.LineSegments(rightGeo, this._trailMat);
+    this._rightTrail.frustumCulled = false;
+    this.group.add(this._rightTrail);
 
     // Shared materials
     this._bodyMat = new THREE.MeshStandardMaterial({ color: 0xff69b4, roughness: 0.6 }); // Pink jacket
@@ -179,24 +194,12 @@ export class PlayerSkier {
     const gradZ = (hD - hU) / (2 * sampleR * cellSize);
     this.heading = Math.atan2(-gradX, -gradZ); // face downhill
 
-    // Dual Trails
-    const maxTrailVerts = 4000;
-    const leftGeo = new THREE.BufferGeometry();
-    const leftPositions = new Float32Array(maxTrailVerts * 3);
-    leftGeo.setAttribute('position', new THREE.BufferAttribute(leftPositions, 3));
-    leftGeo.setDrawRange(0, 0);
-    this._leftTrail = new THREE.Line(leftGeo, this._trailMat);
-    this.group.add(this._leftTrail);
+    // Reset touchdown anchors so a new run doesn't connect a line to previous run's end position
+    this._lastLeftPoint = null;
+    this._lastRightPoint = null;
 
-    const rightGeo = new THREE.BufferGeometry();
-    const rightPositions = new Float32Array(maxTrailVerts * 3);
-    rightGeo.setAttribute('position', new THREE.BufferAttribute(rightPositions, 3));
-    rightGeo.setDrawRange(0, 0);
-    this._rightTrail = new THREE.Line(rightGeo, this._trailMat);
-    this.group.add(this._rightTrail);
-
-    this._leftTrailPoints = [];
-    this._rightTrailPoints = [];
+    if (this._leftTrail) this._leftTrail.visible = this._trailsVisible;
+    if (this._rightTrail) this._rightTrail.visible = this._trailsVisible;
 
     // Start listening for input
     window.addEventListener('keydown', this._onKeyDown);
@@ -267,18 +270,10 @@ export class PlayerSkier {
       this._parachute.traverse(c => { if (c.geometry) c.geometry.dispose(); });
       this._parachute = null;
     }
-    if (this._leftTrail) {
-      this.group.remove(this._leftTrail);
-      this._leftTrail.geometry.dispose();
-      this._leftTrail = null;
-    }
-    if (this._rightTrail) {
-      this.group.remove(this._rightTrail);
-      this._rightTrail.geometry.dispose();
-      this._rightTrail = null;
-    }
-    this._leftTrailPoints = [];
-    this._rightTrailPoints = [];
+
+    // Trails persist in the world across runs; reset anchor so subsequent runs start fresh
+    this._lastLeftPoint = null;
+    this._lastRightPoint = null;
 
     // Clean up splash particles
     for (const p of this._splashPool) {
@@ -1202,8 +1197,8 @@ export class PlayerSkier {
       if (this._head) this._head.rotation.set(0, 0, 0);
       if (this._helmet) this._helmet.rotation.set(0, 0, 0);
 
-      if (this._leftTrail) this._leftTrail.visible = false;
-      if (this._rightTrail) this._rightTrail.visible = false;
+      this._lastLeftPoint = null;
+      this._lastRightPoint = null;
       if (this._parachute) this._parachute.visible = false;
       return;
     }
@@ -1252,8 +1247,8 @@ export class PlayerSkier {
       if (this._helmet) this._helmet.rotation.set(0, 0, 0);
 
       // Hide trails and parachute while riding
-      if (this._leftTrail) this._leftTrail.visible = false;
-      if (this._rightTrail) this._rightTrail.visible = false;
+      this._lastLeftPoint = null;
+      this._lastRightPoint = null;
       if (this._parachute) this._parachute.visible = false;
       return;
     }
@@ -1448,6 +1443,13 @@ export class PlayerSkier {
     if (this._leftTrail) this._leftTrail.visible = true;
     if (this._rightTrail) this._rightTrail.visible = true;
 
+    // Only draw new trail points when actively skiing on the ground and not on water
+    if (!this.grounded || this._onWater || this.state !== 'skiing') {
+      this._lastLeftPoint = null;
+      this._lastRightPoint = null;
+      return;
+    }
+
     const cosH = Math.cos(this.heading);
     const sinH = Math.sin(this.heading);
     const skiOffset = 0.09;
@@ -1457,23 +1459,43 @@ export class PlayerSkier {
     const lz = z + sinH * skiOffset;
     const rx = x + cosH * skiOffset;
     const rz = z - sinH * skiOffset;
-    const trackY = y + 0.02;
 
-    const ltp = this._leftTrailPoints;
-    const rtp = this._rightTrailPoints;
-    const maxTrailVerts = 4000;
+    // Sample terrain height directly under each ski and elevate above surface (matches AI skiers' +0.15 offset)
+    const groundL = this.terrain.getInterpolatedHeight(lx, lz);
+    const groundR = this.terrain.getInterpolatedHeight(rx, rz);
+    const leftTrackY = (isFinite(groundL) ? groundL : y) + 0.15;
+    const rightTrackY = (isFinite(groundR) ? groundR : y) + 0.15;
 
-    const lastLIdx = ltp.length - 3;
-    let addPoint = true;
-    if (lastLIdx >= 0) {
-      const dx = lx - ltp[lastLIdx];
-      const dz = lz - ltp[lastLIdx + 2];
-      if (dx * dx + dz * dz < 0.09) addPoint = false; // < 0.3 units spacing
+    // Only add a new segment if moved far enough (approx 0.25 units)
+    let shouldAddSegment = false;
+    if (this._lastLeftPoint && this._lastRightPoint) {
+      const dx = lx - this._lastLeftPoint.x;
+      const dz = lz - this._lastLeftPoint.z;
+      if (dx * dx + dz * dz >= 0.09) { // >= 0.30 units spacing
+        shouldAddSegment = true;
+      }
+    } else {
+      // First touchdown point after jump, spawning, or chairlift dismount
+      this._lastLeftPoint = { x: lx, y: leftTrackY, z: lz };
+      this._lastRightPoint = { x: rx, y: rightTrackY, z: rz };
     }
 
-    if (addPoint && this.grounded && !this._onWater) {
-      ltp.push(lx, trackY, lz);
-      rtp.push(rx, trackY, rz);
+    if (shouldAddSegment) {
+      const ltp = this._leftTrailPoints;
+      const rtp = this._rightTrailPoints;
+      const maxTrailVerts = this._maxTrailVerts || 40000;
+
+      // Push line segment (from previous point to current point)
+      ltp.push(this._lastLeftPoint.x, this._lastLeftPoint.y, this._lastLeftPoint.z, lx, leftTrackY, lz);
+      rtp.push(this._lastRightPoint.x, this._lastRightPoint.y, this._lastRightPoint.z, rx, rightTrackY, rz);
+
+      this._lastLeftPoint.x = lx;
+      this._lastLeftPoint.y = leftTrackY;
+      this._lastLeftPoint.z = lz;
+
+      this._lastRightPoint.x = rx;
+      this._lastRightPoint.y = rightTrackY;
+      this._lastRightPoint.z = rz;
 
       if (ltp.length > maxTrailVerts * 3) {
         this._leftTrailPoints = ltp.slice(ltp.length - maxTrailVerts * 3);
@@ -1482,16 +1504,14 @@ export class PlayerSkier {
 
       if (this._leftTrail && this._rightTrail) {
         const lPosAttr = this._leftTrail.geometry.attributes.position;
-        const lCount = Math.min(this._leftTrailPoints.length, maxTrailVerts * 3);
-        const lOffset = this._leftTrailPoints.length - lCount;
-        lPosAttr.array.set(this._leftTrailPoints.slice(lOffset, lOffset + lCount));
+        const lCount = this._leftTrailPoints.length;
+        lPosAttr.array.set(this._leftTrailPoints);
         lPosAttr.needsUpdate = true;
         this._leftTrail.geometry.setDrawRange(0, lCount / 3);
 
         const rPosAttr = this._rightTrail.geometry.attributes.position;
-        const rCount = Math.min(this._rightTrailPoints.length, maxTrailVerts * 3);
-        const rOffset = this._rightTrailPoints.length - rCount;
-        rPosAttr.array.set(this._rightTrailPoints.slice(rOffset, rOffset + rCount));
+        const rCount = this._rightTrailPoints.length;
+        rPosAttr.array.set(this._rightTrailPoints);
         rPosAttr.needsUpdate = true;
         this._rightTrail.geometry.setDrawRange(0, rCount / 3);
       }
@@ -2044,5 +2064,20 @@ export class PlayerSkier {
     this._trailsVisible = visible;
     if (this._leftTrail) this._leftTrail.visible = this._trailsVisible;
     if (this._rightTrail) this._rightTrail.visible = this._trailsVisible;
+  }
+
+  clearTrails() {
+    this._leftTrailPoints = [];
+    this._rightTrailPoints = [];
+    this._lastLeftPoint = null;
+    this._lastRightPoint = null;
+    if (this._leftTrail) {
+      this._leftTrail.geometry.setDrawRange(0, 0);
+      this._leftTrail.geometry.attributes.position.needsUpdate = true;
+    }
+    if (this._rightTrail) {
+      this._rightTrail.geometry.setDrawRange(0, 0);
+      this._rightTrail.geometry.attributes.position.needsUpdate = true;
+    }
   }
 }
