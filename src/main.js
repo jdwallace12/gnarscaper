@@ -25,6 +25,7 @@ import { Clouds } from './engine/Clouds.js';
 import { PlayerSkier } from './engine/PlayerSkier.js';
 import { SnowGlints } from './engine/SnowGlints.js';
 import { Snowmobiles } from './engine/Snowmobiles.js';
+import { AvalancheSystem } from './engine/AvalancheSystem.js';
 
 // ---- Boot ----
 (async () => {
@@ -65,6 +66,7 @@ playerSkier.water = water;
 const snowmobiles = new Snowmobiles(terrain, seaLevel);
 playerSkier.setSnowmobileRegistry(snowmobiles);
 const snowGlints = new SnowGlints(terrain, 2500);
+const avalanches = new AvalancheSystem(terrain);
 
 scene.add(terrain.mesh);
 scene.add(water.mesh);
@@ -78,6 +80,7 @@ scene.add(clouds.group);
 scene.add(playerSkier.group);
 scene.add(snowmobiles.group);
 scene.add(snowGlints.group);
+scene.add(avalanches.group);
 clouds.updatePositions(seaLevel);
 
 const brush = new BrushEngine(terrain, scene.camera, canvas);
@@ -318,6 +321,7 @@ function doReset() {
   boulders.clear();
   skiers.clear();
   playerSkier.clearTrails();
+  avalanches.clear();
   chairlifts.clear();
   rivers.clear();
   clouds.updatePositions(seaLevel);
@@ -447,6 +451,7 @@ function loadMapData(data) {
   rivers.clear();
   skiers.clear();
   playerSkier.clearTrails();
+  avalanches.clear();
   clouds.updatePositions(seaLevel);
   
   // Restore Trees
@@ -679,8 +684,14 @@ function animate() {
         playerSkier._keys.jump = false; // consume
         skiers.spawn(intersects[0].point.x, intersects[0].point.z);
       }
+
+      if (playerSkier._keys.avalanche) {
+        playerSkier._keys.avalanche = false; // consume
+        avalanches.trigger(intersects[0].point.x, intersects[0].point.z);
+      }
     } else {
       aimCursor.visible = false;
+      playerSkier._keys.avalanche = false;
     }
   } else {
     aimCursor.visible = false;
@@ -803,6 +814,8 @@ function animate() {
   snow.update(dt);
   clouds.update(dt);
   water.update(dt);
+  avalanches.update(dt, skiers, snowmobiles);
+  avalanches.applyCameraShake(scene.camera, dt);
   
   const glintCenter = (isSkierMode && playerSkier.mesh) ? playerSkier.mesh.position : scene.camera.position;
   snowGlints.update(dt, glintCenter);

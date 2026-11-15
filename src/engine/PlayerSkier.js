@@ -27,7 +27,7 @@ export class PlayerSkier {
     this.grounded = true;
 
     // Input state
-    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false, paraglide: false, grab: false };
+    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false, paraglide: false, grab: false, avalanche: false };
     this.paragliding = false;
 
     // Aerial Trick System State
@@ -209,7 +209,7 @@ export class PlayerSkier {
   /** Remove the player skier and clean up */
   despawn() {
     this.active = false;
-    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false, paraglide: false, grab: false, mount: false };
+    this._keys = { left: false, right: false, lookUp: false, lookDown: false, forward: false, brake: false, jump: false, paraglide: false, grab: false, mount: false, avalanche: false };
     this.paragliding = false;
 
     // Despawn active snowmobile if player was riding one
@@ -1693,7 +1693,15 @@ export class PlayerSkier {
   _onKeyDown(e) {
     if (e.target.tagName && e.target.tagName.toLowerCase() === 'input') return;
     switch (e.key) {
-      case 'ArrowLeft':  case 'a': case 'A': e.preventDefault(); this._keys.left = true; break;
+      case 'ArrowLeft':  e.preventDefault(); this._keys.left = true; break;
+      case 'a': case 'A':
+        e.preventDefault();
+        if (this.state === 'riding') {
+          this._keys.avalanche = true;
+        } else {
+          this._keys.left = true;
+        }
+        break;
       case 'ArrowRight': case 'd': case 'D': e.preventDefault(); this._keys.right = true; break;
       case 'ArrowUp':    case 'w': case 'W': e.preventDefault(); this._keys.forward = true; this._keys.lookUp = true; break;
       case 'ArrowDown':  case 's': case 'S': e.preventDefault(); this._keys.brake = true; this._keys.lookDown = true; break;
@@ -1709,7 +1717,11 @@ export class PlayerSkier {
 
   _onKeyUp(e) {
     switch (e.key) {
-      case 'ArrowLeft':  case 'a': case 'A': this._keys.left = false; break;
+      case 'ArrowLeft':  this._keys.left = false; break;
+      case 'a': case 'A':
+        this._keys.left = false;
+        this._keys.avalanche = false;
+        break;
       case 'ArrowRight': case 'd': case 'D': this._keys.right = false; break;
       case 'ArrowUp':    case 'w': case 'W': this._keys.forward = false; this._keys.lookUp = false; break;
       case 'ArrowDown':  case 's': case 'S': this._keys.brake = false; this._keys.lookDown = false; break;

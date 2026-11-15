@@ -1002,7 +1002,7 @@ export class UI {
     if (!el) return;
     if (state === 'riding') {
       el.innerHTML = `
-        <span><b>←/→/W/S</b> Look Around · <b>Space</b> Drop Skier</span>
+        <span><b>←/→/W/S</b> Look Around · <b>A</b> Avalanche · <b>Space</b> Drop Skier</span>
         <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
       `;
     } else if (state === 'snowmobile') {
