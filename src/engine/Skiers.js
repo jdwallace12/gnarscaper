@@ -310,6 +310,7 @@ export class Skiers {
          const p = s.chair.mesh.position;
          const chairAngle = s.chair.mesh.rotation.y;
          const isTram = (s.targetLine && s.targetLine.type === 'tram');
+         const isGondola = (s.targetLine && s.targetLine.type === 'gondola');
          const isQuad = (s.targetLine && s.targetLine.type === 'quad');
 
          let xOffset = 0;
@@ -321,6 +322,13 @@ export class Skiers {
            const seat = (s.seatIdx || 0) % 6;
            xOffset = ((seat % 2) - 0.5) * 0.7;
            zOffset = (Math.floor(seat / 2) - 1.0) * 0.6;
+         } else if (isGondola) {
+           yOffset = -1.0;
+           const seat = (s.seatIdx || 0) % 6;
+           const benchZ = (seat < 3) ? -0.28 : 0.28;
+           const lateral = ((seat % 3) - 1.0) * 0.25;
+           xOffset = Math.cos(chairAngle) * lateral - Math.sin(chairAngle) * benchZ;
+           zOffset = -Math.sin(chairAngle) * lateral - Math.cos(chairAngle) * benchZ;
          } else if (isQuad) {
            yOffset = -0.52;
            const lateralOffset = ((s.seatIdx || 0) - 1.5) * 0.38;
@@ -340,7 +348,7 @@ export class Skiers {
          s.wz = p.z + zOffset;
          s.mesh.position.set(s.wx, p.y + yOffset, s.wz);
          s.mesh.rotation.y = chairAngle;
-         s.mesh.scale.setScalar(isTram ? 0.7 : 0.9);
+         s.mesh.scale.setScalar(isTram || isGondola ? 0.75 : 0.9);
 
          let reachedTop = false;
          if (s.chair.progress >= 0.465 && s.chair.progress <= 0.505) {

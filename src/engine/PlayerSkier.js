@@ -990,7 +990,7 @@ export class PlayerSkier {
       const dz = loadZ - this.wz;
       const distSq = dx * dx + dz * dz;
       // Tight boarding radius — player must walk up to the actual load point
-      const boardRadius = line.type === 'tram' ? 3.5 : 2.2;
+      const boardRadius = line.type === 'tram' ? 3.5 : (line.type === 'gondola' ? 2.8 : 2.2);
 
       if (distSq < boardRadius * boardRadius) {
         this.state = 'waiting';
@@ -1087,7 +1087,7 @@ export class PlayerSkier {
     const rideSmooth = Math.min(1.0, 18.0 * dt);
     this.wx = this.wx + (chairPos.x - this.wx) * rideSmooth;
     this.wz = this.wz + (chairPos.z - this.wz) * rideSmooth;
-    const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : 0.68;
+    const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : ((this.targetLine && this.targetLine.type === 'gondola') ? 1.05 : 0.68);
     const targetY = chairPos.y - rideOffset;
     this.y = this.y + (targetY - this.y) * rideSmooth;
     // Smoothly interpolate heading to avoid snapping when yaw changes
@@ -1207,7 +1207,7 @@ export class PlayerSkier {
       // Lock visuals directly to chair mesh for 100% jitter-free synchronization
       if (this.chair && this.chair.mesh) {
         const cp = this.chair.mesh.position;
-        const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : 0.68;
+        const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : ((this.targetLine && this.targetLine.type === 'gondola') ? 1.05 : 0.68);
         this.mesh.position.set(cp.x, cp.y - rideOffset + 0.15, cp.z);
         this.mesh.rotation.y = this.chair.mesh.rotation.y;
         this.mesh.rotation.x = 0;
@@ -1552,7 +1552,7 @@ export class PlayerSkier {
     // Dedicated rock-solid ride camera when on a chairlift or tram
     if (this.state === 'riding' && this.chair && this.chair.mesh) {
       const cp = this.chair.mesh.position;
-      const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : 0.68;
+      const rideOffset = (this.targetLine && this.targetLine.type === 'tram') ? 1.8 : ((this.targetLine && this.targetLine.type === 'gondola') ? 1.05 : 0.68);
       const curX = cp.x;
       const curZ = cp.z;
       const curY = cp.y - rideOffset;

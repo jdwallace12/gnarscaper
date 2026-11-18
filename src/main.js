@@ -592,16 +592,16 @@ function handleInteractStart(e) {
     snowmobiles.place(brush.intersectionPoint.x, brush.intersectionPoint.z);
   }
 
-  if (tool.isChairlift || tool.isTram) {
+  if (tool.isChairlift || tool.isTram || tool.isGondola) {
     if (!chairliftStartPoint) {
       chairliftStartPoint = brush.intersectionPoint.clone();
       brush.updateCursorColor('#e63946');
-      const liftName = tool.name || (tool.isTram ? 'Aerial Tram' : 'Chairlift');
-      const icon = tool.icon || (tool.isTram ? '🚠' : '🚡');
+      const liftName = tool.name || (tool.isTram ? 'Aerial Tram' : (tool.isGondola ? 'Gondola' : 'Chairlift'));
+      const icon = tool.icon || (tool.isTram ? '🚟' : (tool.isGondola ? '🚡' : '🚡'));
       ui.showChairliftHint(`${icon} ${liftName} base set! Now click the summit station location.`);
     } else {
       const endPoint = brush.intersectionPoint.clone();
-      const liftType = tool.liftType || (tool.isTram ? 'tram' : 'chairlift');
+      const liftType = tool.liftType || (tool.isTram ? 'tram' : (tool.isGondola ? 'gondola' : 'chairlift'));
       chairlifts.buildLine(chairliftStartPoint, endPoint, { type: liftType });
       chairliftStartPoint = null;
       brush.updateCursorColor(tool.color);

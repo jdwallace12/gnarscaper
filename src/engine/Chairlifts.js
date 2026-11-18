@@ -4,7 +4,8 @@ import * as THREE from 'three/webgpu';
  * Procedural lift system supporting:
  * 1. Double Chairlift (Classic fixed-grip 2-seater, relaxed speed)
  * 2. Quad Chairlift (High-speed express 4-seater, fast speed)
- * 3. Aerial Tram (Iconic reversible panoramic cabins, maximum speed)
+ * 3. Gondola Lift (High-speed continuous circulating enclosed cabins, modern express)
+ * 4. Aerial Tram (Iconic reversible panoramic cabins, maximum speed)
  */
 
 export class Chairlifts {
@@ -29,6 +30,25 @@ export class Chairlifts {
     this.matQuadStationCover = new THREE.MeshStandardMaterial({ color: 0x0369a1, roughness: 0.3, metalness: 0.4 }); // Express Blue canopy
     this.matQuadStationTrim = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2, metalness: 0.5 }); // Crisp white trim
 
+    // Materials - Gondola
+    this.matGondolaTower = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.5, metalness: 0.65 });
+    this.matGondolaFrame = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.35, metalness: 0.8 });
+    this.matGondolaRoof = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.3, metalness: 0.3 });
+    this.matGondolaGlass = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      roughness: 0.1,
+      metalness: 0.85,
+      opacity: 0.78,
+      transparent: true
+    });
+    this.matGondolaStationBase = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8, metalness: 0.3 });
+    this.matGondolaStationCover = new THREE.MeshStandardMaterial({ color: 0x0f766e, roughness: 0.35, metalness: 0.4 }); // Deep Alpine Teal
+    // Multi-color gondola cabin liveries
+    this.matGondolaCabinEmerald = new THREE.MeshStandardMaterial({ color: 0x059669, roughness: 0.35, metalness: 0.3 });
+    this.matGondolaCabinCrimson = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.35, metalness: 0.3 });
+    this.matGondolaCabinSapphire = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.35, metalness: 0.3 });
+    this.matGondolaCabinAmber = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.35, metalness: 0.3 });
+
     // Materials - Aerial Tram
     this.matTramTower = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5, metalness: 0.7 });
     this.matTramCrossbar = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.8 });
@@ -51,6 +71,7 @@ export class Chairlifts {
     // Movement speeds (world units per second)
     this.doubleChairSpeed = 8.0; // Slower, relaxed classic fixed-grip
     this.quadChairSpeed = 12.0;   // Current high-speed express quad speed
+    this.gondolaSpeed = 13.5;     // Fast continuous monocable gondola
     this.tramSpeed = 16.0;        // Fast aerial tramway speed
   }
 
@@ -63,6 +84,7 @@ export class Chairlifts {
   buildLine(p1, p2, options = {}) {
     const type = typeof options === 'string' ? options : (options.type || 'chairlift');
     const isTram = type === 'tram';
+    const isGondola = type === 'gondola';
     const isQuad = type === 'quad';
     const lineGroup = new THREE.Group();
     
@@ -77,7 +99,7 @@ export class Chairlifts {
     if (horizontalLength < 5) return; // Too short!
 
     // Flatten terrain pads under base and top stations
-    const padRadius = isTram ? 16 : (isQuad ? 14 : 12);
+    const padRadius = isTram ? 16 : (isGondola ? 15 : (isQuad ? 14 : 12));
     if (this.terrain && this.terrain.flattenPad) {
       this.terrain.flattenPad(base.x, base.z, padRadius);
       this.terrain.flattenPad(summit.x, summit.z, padRadius);
@@ -95,24 +117,89 @@ export class Chairlifts {
     const yawUphill = Math.atan2(dx, dz);
     const yawDownhill = Math.atan2(-dx, -dz);
 
-    // Determine tower spacing, clearance, and track width
-    const towerSpacing = isTram ? 45 : (isQuad ? 32 : 28);
-    const towerCount = Math.max(2, Math.floor(horizontalLength / towerSpacing));
-    const step = 1.0 / towerCount;
-    const clearance = isTram ? 11.0 : (isQuad ? 8.5 : 7.5);
-    const minHeightAboveTerrain = isTram ? 4.5 : (isQuad ? 3.5 : 3.0);
-    const trackOffset = isTram ? 1.6 : (isQuad ? 1.1 : 0.75);
+    // Determine baseline tower spacing, clearance, and track width
+    const towerSpacing = isTram ? 45 : (isGondola ? 34 : (isQuad ? 30 : 26));
+    const clearance = isTram ? 11.0 : (isGondola ? 9.5 : (isQuad ? 8.5 : 7.5));
+    const minHeightAboveTerrain = isTram ? 5.5 : (isGondola ? 4.5 : (isQuad ? 3.8 : 3.2));
+    const trackOffset = isTram ? 1.6 : (isGondola ? 1.3 : (isQuad ? 1.1 : 0.75));
 
-    // Cable path arrays (from base index 0 to summit index towerCount)
+    // Initial regular tower distribution along line
+    const initialTowerCount = Math.max(2, Math.floor(horizontalLength / towerSpacing));
+    let tList = [];
+    for (let i = 0; i <= initialTowerCount; i++) {
+      tList.push(i / initialTowerCount);
+    }
+
+    // --- Terrain-Adaptive Tower Insertion ---
+    // Detect steep pitches, ridges, and convex breakovers where the straight cable would
+    // dip into or violate clearance above the terrain, automatically placing support towers.
+    const minTowerDist = Math.max(7.0, horizontalLength / (initialTowerCount * 4));
+    const maxPasses = 8;
+
+    for (let pass = 0; pass < maxPasses; pass++) {
+      let inserted = false;
+      const currentCableH = tList.map(t => {
+        const tx = base.x + dx * t;
+        const tz = base.z + dz * t;
+        const gh = this.terrain.getInterpolatedHeight(tx, tz);
+        const idealH = THREE.MathUtils.lerp(base.y, summit.y, t) + clearance;
+        return Math.max(idealH, gh + minHeightAboveTerrain);
+      });
+
+      const nextTList = [tList[0]];
+
+      for (let j = 0; j < tList.length - 1; j++) {
+        const tA = tList[j];
+        const tB = tList[j + 1];
+        const spanDist = (tB - tA) * horizontalLength;
+
+        if (spanDist > minTowerDist * 1.8) {
+          const samples = Math.max(8, Math.floor(spanDist / 1.5));
+          let maxDeficit = 0;
+          let worstT = -1;
+
+          for (let s = 1; s < samples; s++) {
+            const frac = s / samples;
+            const t = tA + (tB - tA) * frac;
+            const tx = base.x + dx * t;
+            const tz = base.z + dz * t;
+            const gh = this.terrain.getInterpolatedHeight(tx, tz);
+
+            const cableH = THREE.MathUtils.lerp(currentCableH[j], currentCableH[j + 1], frac);
+            const reqH = gh + minHeightAboveTerrain;
+            const deficit = reqH - cableH;
+
+            if (deficit > 0.15 && deficit > maxDeficit) {
+              maxDeficit = deficit;
+              worstT = t;
+            }
+          }
+
+          if (worstT > 0 && maxDeficit > 0.25) {
+            const distA = (worstT - tA) * horizontalLength;
+            const distB = (tB - worstT) * horizontalLength;
+            if (distA >= minTowerDist && distB >= minTowerDist) {
+              nextTList.push(worstT);
+              inserted = true;
+            }
+          }
+        }
+
+        nextTList.push(tB);
+      }
+
+      tList = nextTList;
+      if (!inserted) break;
+    }
+
+    // Build cable points and physical intermediate towers
     const cablePoints = [];
 
-    for (let i = 0; i <= towerCount; i++) {
-      const t = i * step;
+    for (let i = 0; i < tList.length; i++) {
+      const t = tList[i];
       const tx = base.x + dx * t;
       const tz = base.z + dz * t;
-      
-      const { gx, gz } = this.terrain.worldToGrid(tx, tz);
-      const h = this.terrain.getHeight(gx, gz);
+      const h = this.terrain.getInterpolatedHeight(tx, tz);
 
       const idealH = THREE.MathUtils.lerp(base.y, summit.y, t) + clearance;
       const cableH = Math.max(idealH, h + minHeightAboveTerrain);
@@ -122,9 +209,14 @@ export class Chairlifts {
       const towerHeight = cableH - h;
 
       // Only place intermediate towers between stations
-      if (i > 0 && i < towerCount) {
+      if (i > 0 && i < tList.length - 1) {
         if (isTram) {
           const towerObj = this._buildTramTower(towerHeight, trackOffset);
+          towerObj.position.set(tx, h, tz);
+          towerObj.rotation.y = yawUphill;
+          lineGroup.add(towerObj);
+        } else if (isGondola) {
+          const towerObj = this._buildGondolaTower(towerHeight, trackOffset);
           towerObj.position.set(tx, h, tz);
           towerObj.rotation.y = yawUphill;
           lineGroup.add(towerObj);
@@ -156,7 +248,7 @@ export class Chairlifts {
     const downhillCablePoints = cablePoints.map(p => new THREE.Vector3(p.x - vx * trackOffset, p.y + 0.1, p.z - vz * trackOffset));
 
     const loopPoints = [...uphillCablePoints];
-    const topPt = cablePoints[towerCount];
+    const topPt = cablePoints[cablePoints.length - 1];
     const basePt = cablePoints[0];
 
     const arcSteps = 8;
@@ -166,7 +258,7 @@ export class Chairlifts {
       const lz = topPt.z + (vz * Math.cos(th) + uz * Math.sin(th)) * trackOffset;
       loopPoints.push(new THREE.Vector3(lx, topPt.y + 0.1, lz));
     }
-    for (let i = towerCount; i >= 0; i--) {
+    for (let i = cablePoints.length - 1; i >= 0; i--) {
       loopPoints.push(downhillCablePoints[i]);
     }
     for (let k = 1; k < arcSteps; k++) {
@@ -185,13 +277,18 @@ export class Chairlifts {
       lineGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(loopPoints2), this.matCable));
     }
 
-    // Measure actual 3D cable length along line
+    // Measure actual 3D cable segment lengths and cumulative distances for uniform speed
     let totalLength = 0;
+    const segLengths = [];
+    const cumLengths = [0];
     for (let i = 0; i < cablePoints.length - 1; i++) {
-      totalLength += cablePoints[i].distanceTo(cablePoints[i+1]);
+      const d = cablePoints[i].distanceTo(cablePoints[i + 1]);
+      segLengths.push(d);
+      totalLength += d;
+      cumLengths.push(totalLength);
     }
 
-    // Build Vehicles (Double Chairs, Quad Chairs, or Tram Cabins)
+    // Build Vehicles (Double Chairs, Quad Chairs, Gondolas, or Tram Cabins)
     const chairs = [];
 
     if (isTram) {
@@ -200,6 +297,8 @@ export class Chairlifts {
         mesh: tram1,
         progress: 0.0,
         isTram: true,
+        isGondola: false,
+        isQuad: false,
         capacity: 12,
         passengers: [],
         passenger: null
@@ -211,11 +310,38 @@ export class Chairlifts {
         mesh: tram2,
         progress: 0.5,
         isTram: true,
+        isGondola: false,
+        isQuad: false,
         capacity: 12,
         passengers: [],
         passenger: null
       });
       lineGroup.add(tram2);
+    } else if (isGondola) {
+      // Gondolas: continuous loop, fewer cabins than quads (spaced out for distinct cabin experience)
+      const gondolaCount = Math.max(3, Math.floor(totalLength / 18));
+      const gondolaColors = [
+        this.matGondolaCabinEmerald,
+        this.matGondolaCabinCrimson,
+        this.matGondolaCabinSapphire,
+        this.matGondolaCabinAmber
+      ];
+      for (let i = 0; i < gondolaCount; i++) {
+        const bodyMat = gondolaColors[i % gondolaColors.length];
+        const gondolaGrp = this._buildGondolaCabin(bodyMat, i + 1);
+        const progress = i / gondolaCount;
+        chairs.push({
+          mesh: gondolaGrp,
+          progress: progress,
+          isTram: false,
+          isGondola: true,
+          isQuad: false,
+          capacity: 6,
+          passengers: [],
+          passenger: null
+        });
+        lineGroup.add(gondolaGrp);
+      }
     } else if (isQuad) {
       const chairCount = Math.max(4, Math.floor(totalLength / 7));
       for (let i = 0; i < chairCount; i++) {
@@ -225,6 +351,7 @@ export class Chairlifts {
           mesh: quadGrp,
           progress: progress,
           isTram: false,
+          isGondola: false,
           isQuad: true,
           capacity: 4,
           passengers: [],
@@ -241,6 +368,7 @@ export class Chairlifts {
           mesh: chairGrp,
           progress: progress,
           isTram: false,
+          isGondola: false,
           isQuad: false,
           capacity: 2,
           passengers: [],
@@ -258,6 +386,16 @@ export class Chairlifts {
       lineGroup.add(station1);
 
       const station2 = this._buildTramStation();
+      station2.position.set(summit.x, summit.y, summit.z);
+      station2.rotation.y = yawUphill + Math.PI;
+      lineGroup.add(station2);
+    } else if (isGondola) {
+      const station1 = this._buildGondolaStation();
+      station1.position.set(base.x, base.y, base.z);
+      station1.rotation.y = yawUphill;
+      lineGroup.add(station1);
+
+      const station2 = this._buildGondolaStation();
       station2.position.set(summit.x, summit.y, summit.z);
       station2.rotation.y = yawUphill + Math.PI;
       lineGroup.add(station2);
@@ -288,11 +426,14 @@ export class Chairlifts {
     // Set appropriate line speed
     let speed = this.doubleChairSpeed;
     if (isTram) speed = this.tramSpeed;
+    else if (isGondola) speed = this.gondolaSpeed;
     else if (isQuad) speed = this.quadChairSpeed;
 
     const lineData = {
       group: lineGroup,
       cablePoints,
+      segLengths,
+      cumLengths,
       totalLength,
       chairs,
       dx, dz,
@@ -320,7 +461,8 @@ export class Chairlifts {
   }
 
   /**
-   * Get smooth, continuous 3D world position and yaw rotation for a chair along the lift loop.
+   * Get smooth, continuous 3D world position and yaw rotation for a chair along the lift loop,
+   * parameterized by true arc-length distance so movement speed is perfectly uniform.
    * @param {object} line 
    * @param {number} progress in [0, 1)
    */
@@ -329,7 +471,10 @@ export class Chairlifts {
     if (p < 0) p += 1.0;
 
     const cablePoints = line.cablePoints;
-    const segmentCount = cablePoints.length - 1;
+    const segCount = cablePoints.length - 1;
+    const cumLengths = line.cumLengths;
+    const segLengths = line.segLengths;
+    const totalLength = line.totalLength;
     const trackOffset = line.trackOffset || 0.75;
     const vx = line.vx;
     const vz = line.vz;
@@ -337,28 +482,58 @@ export class Chairlifts {
     const uz = line.uz;
     const yawUphill = line.yawUphill;
     const isTram = line.type === 'tram';
-    const yLift = isTram ? 0.0 : 0.1;
+    const isGondola = line.type === 'gondola';
+    const yLift = isTram ? 0.0 : (isGondola ? 0.05 : 0.1);
+
+    // Sample continuous position along cable using arc length
+    const sampleCable = (u) => {
+      const targetDist = Math.max(0, Math.min(totalLength, u * totalLength));
+      let idx = 0;
+      if (cumLengths) {
+        for (let i = 0; i < segCount; i++) {
+          if (targetDist <= cumLengths[i + 1]) {
+            idx = i;
+            break;
+          }
+        }
+        const segLen = (segLengths && segLengths[idx]) || 0.001;
+        const frac = (targetDist - cumLengths[idx]) / segLen;
+        const pA = cablePoints[idx];
+        const pB = cablePoints[idx + 1];
+        return {
+          x: THREE.MathUtils.lerp(pA.x, pB.x, frac),
+          y: THREE.MathUtils.lerp(pA.y, pB.y, frac),
+          z: THREE.MathUtils.lerp(pA.z, pB.z, frac)
+        };
+      } else {
+        const segT = u * segCount;
+        idx = Math.min(Math.floor(segT), segCount - 1);
+        const frac = segT - idx;
+        const pA = cablePoints[idx];
+        const pB = cablePoints[idx + 1];
+        return {
+          x: THREE.MathUtils.lerp(pA.x, pB.x, frac),
+          y: THREE.MathUtils.lerp(pA.y, pB.y, frac),
+          z: THREE.MathUtils.lerp(pA.z, pB.z, frac)
+        };
+      }
+    };
 
     let x, y, z, yaw;
 
     if (p < 0.48) {
       // 1. Uphill Track (progress 0.0 -> 0.48)
       const u = p / 0.48; // 0 to 1
-      const segT = u * segmentCount;
-      const idx = Math.min(Math.floor(segT), segmentCount - 1);
-      const frac = segT - idx;
-      const pA = cablePoints[idx];
-      const pB = cablePoints[idx + 1];
-
-      x = THREE.MathUtils.lerp(pA.x, pB.x, frac) + vx * trackOffset;
-      y = THREE.MathUtils.lerp(pA.y, pB.y, frac) + yLift;
-      z = THREE.MathUtils.lerp(pA.z, pB.z, frac) + vz * trackOffset;
+      const pt = sampleCable(u);
+      x = pt.x + vx * trackOffset;
+      y = pt.y + yLift;
+      z = pt.z + vz * trackOffset;
       yaw = yawUphill;
     } else if (p < 0.52) {
       // 2. Summit Bullwheel Loop (progress 0.48 -> 0.52)
       const u = (p - 0.48) / 0.04; // 0 to 1
       const theta = u * Math.PI; // 0 to PI
-      const summitPt = cablePoints[segmentCount];
+      const summitPt = cablePoints[segCount];
 
       x = summitPt.x + (vx * Math.cos(theta) + ux * Math.sin(theta)) * trackOffset;
       y = summitPt.y + yLift;
@@ -367,15 +542,10 @@ export class Chairlifts {
     } else if (p < 0.96) {
       // 3. Downhill Return Track (progress 0.52 -> 0.96)
       const u = (p - 0.52) / 0.44; // 0 to 1
-      const segT = (1.0 - u) * segmentCount;
-      const idx = Math.min(Math.floor(segT), segmentCount - 1);
-      const frac = segT - idx;
-      const pA = cablePoints[idx];
-      const pB = cablePoints[idx + 1];
-
-      x = THREE.MathUtils.lerp(pA.x, pB.x, frac) - vx * trackOffset;
-      y = THREE.MathUtils.lerp(pA.y, pB.y, frac) + yLift;
-      z = THREE.MathUtils.lerp(pA.z, pB.z, frac) - vz * trackOffset;
+      const pt = sampleCable(1.0 - u);
+      x = pt.x - vx * trackOffset;
+      y = pt.y + yLift;
+      z = pt.z - vz * trackOffset;
       yaw = yawUphill + Math.PI;
     } else {
       // 4. Base Bullwheel Loop (progress 0.96 -> 1.00)
@@ -383,9 +553,9 @@ export class Chairlifts {
       const theta = u * Math.PI; // 0 to PI
       const basePt = cablePoints[0];
 
-      x = basePt.x - (vx * Math.cos(theta) + ux * Math.sin(theta)) * trackOffset;
+      x = basePt.x - (vx * Math.cos(theta) - ux * Math.sin(theta)) * trackOffset;
       y = basePt.y + yLift;
-      z = basePt.z - (vz * Math.cos(theta) + uz * Math.sin(theta)) * trackOffset;
+      z = basePt.z - (vz * Math.cos(theta) - uz * Math.sin(theta)) * trackOffset;
       yaw = yawUphill + Math.PI + theta;
     }
 
@@ -854,6 +1024,246 @@ export class Chairlifts {
     });
 
     g.scale.setScalar(0.75);
+    return g;
+  }
+
+  /* ----------------------------------------------------
+   * GONDOLA LIFT GEOMETRY BUILDERS
+   * ---------------------------------------------------- */
+  _buildGondolaTower(towerHeight, trackOffset) {
+    const g = new THREE.Group();
+
+    // Central tubular galvanized steel tower mast
+    const towerGeo = new THREE.CylinderGeometry(0.2, 0.36, towerHeight, 8);
+    towerGeo.translate(0, towerHeight / 2, 0);
+    const towerMesh = new THREE.Mesh(towerGeo, this.matGondolaTower);
+    towerMesh.castShadow = true;
+    g.add(towerMesh);
+
+    // Tower base flange
+    const flangeGeo = new THREE.CylinderGeometry(0.44, 0.48, 0.25, 8);
+    flangeGeo.translate(0, 0.125, 0);
+    const flange = new THREE.Mesh(flangeGeo, this.matGondolaFrame);
+    g.add(flange);
+
+    // Maintenance work platform below crossarm
+    const platformWidth = trackOffset * 2 + 0.8;
+    const platGeo = new THREE.BoxGeometry(platformWidth, 0.08, 1.2);
+    platGeo.translate(0, towerHeight - 0.7, 0);
+    const plat = new THREE.Mesh(platGeo, this.matGondolaFrame);
+    g.add(plat);
+
+    // Sturdy crossarm beam at tower top
+    const crossarmWidth = trackOffset * 2 + 1.4;
+    const crossarmGeo = new THREE.BoxGeometry(crossarmWidth, 0.35, 0.4);
+    const crossarm = new THREE.Mesh(crossarmGeo, this.matGondolaTower);
+    crossarm.position.set(0, towerHeight, 0);
+    crossarm.castShadow = true;
+    g.add(crossarm);
+
+    // Diagonal support gussets under crossarm
+    [-trackOffset * 0.7, trackOffset * 0.7].forEach(gx => {
+      const gussetGeo = new THREE.BoxGeometry(0.12, 0.6, 0.2);
+      const gusset = new THREE.Mesh(gussetGeo, this.matGondolaTower);
+      gusset.position.set(gx, towerHeight - 0.32, 0);
+      gusset.rotation.z = gx > 0 ? -0.4 : 0.4;
+      g.add(gusset);
+    });
+
+    // Articulated sheave batteries (6 yellow wheels on each side)
+    [-trackOffset, trackOffset].forEach(sideX => {
+      const beamGeo = new THREE.BoxGeometry(0.22, 0.16, 1.6);
+      const beam = new THREE.Mesh(beamGeo, this.matGondolaTower);
+      beam.position.set(sideX, towerHeight + 0.12, 0);
+      g.add(beam);
+
+      [-0.6, -0.36, -0.12, 0.12, 0.36, 0.6].forEach(zOffset => {
+        const wheelGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.07, 8);
+        wheelGeo.rotateZ(Math.PI / 2);
+        const wheel = new THREE.Mesh(wheelGeo, this.matTramSheave);
+        wheel.position.set(sideX, towerHeight + 0.2, zOffset);
+        g.add(wheel);
+      });
+    });
+
+    return g;
+  }
+
+  _buildGondolaCabin(bodyMat, cabinNumber = 1) {
+    const g = new THREE.Group();
+
+    // 1. Cable Grip Clamp Mechanism (at y = 0, where cable connects)
+    const gripGeo = new THREE.BoxGeometry(0.22, 0.16, 0.4);
+    const grip = new THREE.Mesh(gripGeo, this.matGondolaFrame);
+    grip.position.set(0, 0, 0);
+    g.add(grip);
+
+    // Grip release roller wheel
+    const rollerGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 8);
+    rollerGeo.rotateZ(Math.PI / 2);
+    const roller = new THREE.Mesh(rollerGeo, this.matTramSheave);
+    roller.position.set(0, 0.08, 0);
+    g.add(roller);
+
+    // 2. Curving Tubular Hanger Arm (curves down from grip to cabin roof)
+    const armCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0.08, -0.4, 0),
+      new THREE.Vector3(0.12, -0.9, 0),
+      new THREE.Vector3(0.05, -1.35, 0),
+      new THREE.Vector3(0, -1.5, 0),
+    ]);
+    const armGeo = new THREE.TubeGeometry(armCurve, 12, 0.045, 6, false);
+    const arm = new THREE.Mesh(armGeo, this.matGondolaFrame);
+    g.add(arm);
+
+    // Pivot suspension hub at top of cabin roof
+    const hubGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.18, 8);
+    hubGeo.rotateX(Math.PI / 2);
+    const hub = new THREE.Mesh(hubGeo, this.matGondolaFrame);
+    hub.position.set(0, -1.5, 0);
+    g.add(hub);
+
+    // 3. Cabin Group (Sits below suspension arm, centered at ~y = -1.5)
+    const cabin = new THREE.Group();
+    cabin.position.set(0, -1.5, 0);
+
+    // Modern Aerodynamic Cabin Shell:
+    // Dimensions: width ~1.45m, height ~1.6m, length ~1.75m
+    // Lower body tub
+    const lowerBodyGeo = new THREE.BoxGeometry(1.45, 0.65, 1.75);
+    lowerBodyGeo.translate(0, -0.5, 0);
+    const lowerBody = new THREE.Mesh(lowerBodyGeo, bodyMat);
+    lowerBody.castShadow = true;
+    cabin.add(lowerBody);
+
+    // Protective lower rubber bumper skirt
+    const bumperGeo = new THREE.BoxGeometry(1.48, 0.1, 1.78);
+    bumperGeo.translate(0, -0.8, 0);
+    const bumper = new THREE.Mesh(bumperGeo, this.matGondolaFrame);
+    cabin.add(bumper);
+
+    // Panoramic tinted wrap-around glass
+    const glassGeo = new THREE.BoxGeometry(1.42, 0.72, 1.72);
+    glassGeo.translate(0, 0.14, 0);
+    const glass = new THREE.Mesh(glassGeo, this.matGondolaGlass);
+    cabin.add(glass);
+
+    // Corner pillars / window frames
+    [-0.7, 0.7].forEach(px => {
+      [-0.85, 0.85].forEach(pz => {
+        const pillarGeo = new THREE.BoxGeometry(0.06, 0.74, 0.06);
+        const pillar = new THREE.Mesh(pillarGeo, this.matGondolaFrame);
+        pillar.position.set(px, 0.14, pz);
+        cabin.add(pillar);
+      });
+      // Center door pillars
+      const doorPillarGeo = new THREE.BoxGeometry(0.05, 0.74, 0.05);
+      const doorPillar = new THREE.Mesh(doorPillarGeo, this.matGondolaFrame);
+      doorPillar.position.set(px, 0.14, 0);
+      cabin.add(doorPillar);
+    });
+
+    // Aerodynamic curved roof with overhang
+    const roofGeo = new THREE.BoxGeometry(1.48, 0.18, 1.78);
+    roofGeo.translate(0, 0.56, 0);
+    const roof = new THREE.Mesh(roofGeo, this.matGondolaRoof);
+    roof.castShadow = true;
+    cabin.add(roof);
+
+    // Roof ventilation bubble
+    const ventGeo = new THREE.BoxGeometry(0.5, 0.1, 0.8);
+    ventGeo.translate(0, 0.68, 0);
+    const vent = new THREE.Mesh(ventGeo, this.matGondolaFrame);
+    cabin.add(vent);
+
+    // Interior seating: 2 padded benches facing each other
+    [-0.52, 0.52].forEach(bz => {
+      const seatGeo = new THREE.BoxGeometry(1.25, 0.08, 0.38);
+      const seat = new THREE.Mesh(seatGeo, this.matQuadCushion);
+      seat.position.set(0, -0.32, bz);
+      cabin.add(seat);
+
+      const backGeo = new THREE.BoxGeometry(1.25, 0.32, 0.06);
+      const back = new THREE.Mesh(backGeo, this.matQuadCushion);
+      back.position.set(0, -0.14, bz > 0 ? bz + 0.16 : bz - 0.16);
+      cabin.add(back);
+    });
+
+    // Exterior Ski/Snowboard Racks on doors
+    [-0.76, 0.76].forEach(sideX => {
+      const rackGeo = new THREE.BoxGeometry(0.08, 0.45, 0.9);
+      const rack = new THREE.Mesh(rackGeo, this.matGondolaFrame);
+      rack.position.set(sideX, -0.45, 0);
+      cabin.add(rack);
+
+      // Mini skis in rack
+      [-0.25, 0, 0.25].forEach(rz => {
+        const skiGeo = new THREE.BoxGeometry(0.04, 0.7, 0.08);
+        const skiMat = (rz === 0) ? this.matTramCabinBody1 : this.matQuadStationCover;
+        const miniSki = new THREE.Mesh(skiGeo, skiMat);
+        miniSki.position.set(sideX + (sideX > 0 ? 0.03 : -0.03), -0.35, rz);
+        cabin.add(miniSki);
+      });
+    });
+
+    g.add(cabin);
+
+    g.scale.setScalar(0.62); // Proportional gondola scale
+    g.castShadow = true;
+    return g;
+  }
+
+  _buildGondolaStation() {
+    const g = new THREE.Group();
+
+    // Modern Terminal Platform / Foundation Dock
+    const dockGeo = new THREE.BoxGeometry(5.8, 1.1, 7.2);
+    dockGeo.translate(0, 0.55, 0);
+    const dock = new THREE.Mesh(dockGeo, this.matGondolaStationBase);
+    dock.castShadow = true;
+    dock.receiveShadow = true;
+    g.add(dock);
+
+    // Aerodynamic Curved Terminal Enclosure (Doppelmayr UNI-G style)
+    const canopyGeo = new THREE.BoxGeometry(5.2, 3.4, 6.2);
+    canopyGeo.translate(0, 2.7, -0.4);
+    const canopy = new THREE.Mesh(canopyGeo, this.matGondolaStationCover);
+    canopy.castShadow = true;
+    g.add(canopy);
+
+    // Modern Glass Side Windows
+    const glassSideGeo = new THREE.BoxGeometry(5.26, 1.8, 4.6);
+    glassSideGeo.translate(0, 2.7, -0.4);
+    const glassSide = new THREE.Mesh(glassSideGeo, this.matGondolaGlass);
+    g.add(glassSide);
+
+    // Alpine Emerald / Slate Trim Stripe
+    const trimGeo = new THREE.BoxGeometry(5.34, 0.22, 6.3);
+    trimGeo.translate(0, 4.35, -0.4);
+    const trim = new THREE.Mesh(trimGeo, this.matGondolaCabinEmerald);
+    g.add(trim);
+
+    // Internal Drive Bullwheel
+    const bullwheelGeo = new THREE.CylinderGeometry(1.5, 1.5, 0.28, 16);
+    const bullwheel = new THREE.Mesh(bullwheelGeo, this.matTramSheave);
+    bullwheel.position.set(0, 3.3, -0.7);
+    g.add(bullwheel);
+
+    // Overhead Tire Bank / Accelerator Track (characteristic of detachable gondola stations)
+    const tireBankGeo = new THREE.BoxGeometry(3.6, 0.2, 3.8);
+    tireBankGeo.translate(0, 3.3, 0.8);
+    const tireBank = new THREE.Mesh(tireBankGeo, this.matGondolaFrame);
+    g.add(tireBank);
+
+    // Open Entrance Portal for Gondola Cabins
+    const bayMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.9 });
+    const bayGeo = new THREE.BoxGeometry(4.0, 2.6, 3.2);
+    bayGeo.translate(0, 1.9, 1.6);
+    const bay = new THREE.Mesh(bayGeo, bayMat);
+    g.add(bay);
+
+    g.scale.setScalar(0.72);
     return g;
   }
 }

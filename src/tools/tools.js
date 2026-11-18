@@ -942,9 +942,22 @@ export const TOOLS = {
     apply() { /* no-op — handled externally */ },
   },
 
+  gondola: {
+    name: 'Gondola',
+    icon: '🚡',
+    color: '#10b981',
+    cursor: 'crosshair',
+    isBrush: false,
+    category: 'Skiing',
+    isChairlift: true,
+    isGondola: true,
+    liftType: 'gondola',
+    apply() { /* no-op — handled externally */ },
+  },
+
   tram: {
     name: 'Aerial Tram',
-    icon: '🚠',
+    icon: '🚟',
     color: '#f59e0b',
     cursor: 'crosshair',
     isBrush: false,
