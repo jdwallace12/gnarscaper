@@ -120,9 +120,15 @@ export class SceneManager {
     if (!this._skierMode) {
       this._savedCamPos = this.camera.position.clone();
       this._savedTarget = this.controls.target.clone();
+      this._savedFov = this.camera.fov;
+      this._savedNear = this.camera.near;
     }
     
     this._skierMode = true;
+
+    // Enable close near-plane for first-person POV (renders skis & poles without clipping)
+    this.camera.near = 0.08;
+    this.camera.updateProjectionMatrix();
 
     // Shadow Optimization: Shrink shadow frustum and center on player
     if (this.sun) {
@@ -141,6 +147,12 @@ export class SceneManager {
   exitSkierMode(skierPos = null) {
     this._skierMode = false;
     this._currentLookAt = null;
+
+    // Restore camera near plane & fov
+    this.camera.near = this._savedNear || 0.5;
+    this.camera.fov = this._savedFov || 55;
+    this.camera.up.set(0, 1, 0);
+    this.camera.updateProjectionMatrix();
 
     // Restore shadow frustum immediately to prevent artifacts
     if (this.sun) {
@@ -199,8 +211,8 @@ export class SceneManager {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Update chase camera to follow the player skier (call each frame in skier mode) */
-  updateSkierCamera(targetPos, lookAtPos, dt) {
+  /** Update chase / first-person camera to follow the player skier (call each frame in skier mode) */
+  updateSkierCamera(targetPos, lookAtPos, dt, upVector = null, fov = null) {
     if (!this._skierMode) return;
 
     if (!isFinite(targetPos.x) || !isFinite(targetPos.y) || !isFinite(targetPos.z) ||
@@ -212,7 +224,18 @@ export class SceneManager {
     
     if (!this._currentLookAt) this._currentLookAt = lookAtPos.clone();
     this._currentLookAt.copy(lookAtPos);
+
+    if (upVector) {
+      this.camera.up.copy(upVector);
+    } else {
+      this.camera.up.set(0, 1, 0);
+    }
     this.camera.lookAt(this._currentLookAt);
+
+    if (fov && Math.abs(this.camera.fov - fov) > 0.05) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
 
     // Dynamic Shadow: center shadow map on player
     if (this.sun) {

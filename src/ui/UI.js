@@ -1,8 +1,8 @@
 import { TOOLS } from '../tools/tools.js';
 
 export class UI {
-  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset, onSmoothGlobal, onSmoothStart }) {
-    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset, onSmoothGlobal, onSmoothStart };
+  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onToggleSkierView, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset, onSmoothGlobal, onSmoothStart }) {
+    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onToggleSkierView, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset, onSmoothGlobal, onSmoothStart };
     this.activeToolKey = 'raise';
     this.presetKeys = ['golden', 'noon', 'sunset', 'night'];
     this.currentPresetIdx = 0;
@@ -57,6 +57,7 @@ export class UI {
 
     const actionBtns = [
       { id: 'exit', icon: '❌', key: 'exit' },
+      { id: 'view', icon: '🥽', key: 'view' },
       { id: 'jump', icon: '🚀', key: 'jump' },
       { id: 'parachute', icon: '🪂', key: 'parachute' }
     ];
@@ -534,13 +535,26 @@ export class UI {
           <span class="skier-hud-subvalue" id="skier-elevation">0</span>
           <span class="skier-hud-unit">ft</span>
         </div>
+        <div class="skier-hud-divider"></div>
+        <button class="skier-view-toggle-btn" id="skier-view-btn" title="Toggle 1st / 3rd Person View (Press V)">
+          <span id="skier-view-icon">🎥</span> <span id="skier-view-text">3rd Person</span>
+        </button>
         <div class="skier-hud-divider skier-hud-main-divider"></div>
         <div class="skier-hud-controls" id="skier-controls">
-          <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute</span>
+          <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute · <b>V</b> 1st View</span>
           <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
         </div>
       </div>
     `;
+    const viewBtn = this._skierHud.querySelector('#skier-view-btn');
+    if (viewBtn) {
+      viewBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (this.callbacks.onToggleSkierView) {
+          this.callbacks.onToggleSkierView();
+        }
+      });
+    }
     document.body.appendChild(this._skierHud);
 
 
@@ -997,25 +1011,35 @@ export class UI {
     }
   }
 
-  setSkierControlsText(state) {
+  setSkierControlsText(state, firstPerson = false) {
     const el = document.getElementById('skier-controls');
     if (!el) return;
+    const viewLabel = firstPerson ? '3rd View' : '1st View';
     if (state === 'riding') {
       el.innerHTML = `
-        <span><b>←/→/W/S</b> Look Around · <b>A</b> Avalanche · <b>Space</b> Drop Skier</span>
+        <span><b>←/→/W/S</b> Look Around · <b>V</b> ${viewLabel} · <b>A</b> Avalanche · <b>Space</b> Drop Skier</span>
         <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
       `;
     } else if (state === 'snowmobile') {
       el.innerHTML = `
-        <span>🏍️ <b>W/S</b> Throttle/Brake · <b>A/D</b> Steer · <b>Space</b> Launch off! · <b>E</b> Dismount · <b>N</b> Spawn new sled</span>
+        <span>🏍️ <b>W/S</b> Throttle/Brake · <b>A/D</b> Steer · <b>Space</b> Launch off! · <b>E</b> Dismount · <b>V</b> ${viewLabel} · <b>N</b> Spawn sled</span>
         <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
       `;
     } else {
       el.innerHTML = `
-        <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute · <b>N</b> Snowmobile</span>
+        <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute · <b>V</b> ${viewLabel} · <b>N</b> Snowmobile</span>
         <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
       `;
     }
+  }
+
+  updateSkierViewButton(firstPerson) {
+    const btn = document.getElementById('skier-view-btn');
+    const icon = document.getElementById('skier-view-icon');
+    const text = document.getElementById('skier-view-text');
+    if (btn) btn.classList.toggle('first-person', !!firstPerson);
+    if (icon) icon.textContent = firstPerson ? '🥽' : '🎥';
+    if (text) text.textContent = firstPerson ? '1st Person' : '3rd Person';
   }
 
   showSkierPlacement(show) {

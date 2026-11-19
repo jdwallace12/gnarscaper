@@ -181,8 +181,19 @@ const ui = new UI({
     }
   },
   onToggleSkierMode() { toggleSkierMode(); },
+  onToggleSkierView() {
+    if (playerSkier && playerSkier.active) {
+      playerSkier.toggleCameraView();
+    }
+  },
   onResetCamera() { scene.resetCamera(); },
   onMobileControl(dir, active) {
+    if (dir === 'view' && active) {
+      if (playerSkier && playerSkier.active) {
+        playerSkier.toggleCameraView();
+      }
+      return;
+    }
     // Map D-pad directions to skier control keys
     const skierKeyMap = { 'up': 'forward', 'down': 'brake', 'left': 'left', 'right': 'right', 'jump': 'jump', 'parachute': 'paraglide', 'mount': 'mount' };
     if (playerSkier._keys && skierKeyMap[dir]) {
@@ -221,6 +232,11 @@ const ui = new UI({
     clouds.updatePositions(seaLevel);
   },
 });
+
+playerSkier.onCameraViewChange = (firstPerson) => {
+  ui.updateSkierViewButton(firstPerson);
+  ui.setSkierControlsText(playerSkier.state, firstPerson);
+};
 
 function generateInitialFoliage() {
   const mapSize = terrain.size;
@@ -514,6 +530,8 @@ function enterSkierModeAt(wx, wz) {
   brush.enabled = false;
   brush.cursorMesh.visible = false;
   ui.showSkierHUD(true);
+  ui.updateSkierViewButton(playerSkier.firstPerson);
+  ui.setSkierControlsText(playerSkier.state, playerSkier.firstPerson);
 }
 
 function exitSkierMode() {
@@ -525,15 +543,19 @@ function exitSkierMode() {
   brush.enabled = true;
   brush.cursorMesh.visible = true;
   ui.showSkierHUD(false);
+  ui.updateSkierViewButton(false);
 }
 
-// Listen for Escape to exit ski mode, N to spawn snowmobile
+// Listen for Escape to exit ski mode, N to spawn snowmobile, V to toggle 1st/3rd person view
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && isSkierMode) {
     exitSkierMode();
   }
   if ((e.key === 'n' || e.key === 'N') && isSkierMode && playerSkier.active) {
     playerSkier.spawnSnowmobileNearby();
+  }
+  if ((e.key === 'v' || e.key === 'V') && isSkierMode && playerSkier.active) {
+    playerSkier.toggleCameraView();
   }
 });
 
@@ -699,9 +721,11 @@ function animate() {
 
   // Update HUD text if state changed
   if (isSkierMode && playerSkier.active) {
-    if (playerSkier.state !== window.lastSkierState) {
-      ui.setSkierControlsText(playerSkier.state);
+    if (playerSkier.state !== window.lastSkierState || playerSkier.firstPerson !== window.lastSkierFirstPerson) {
+      ui.setSkierControlsText(playerSkier.state, playerSkier.firstPerson);
+      ui.updateSkierViewButton(playerSkier.firstPerson);
       window.lastSkierState = playerSkier.state;
+      window.lastSkierFirstPerson = playerSkier.firstPerson;
     }
 
     // Snowmobile proximity mount hint
@@ -760,7 +784,7 @@ function animate() {
     playerSkier.interpolateVisuals(alpha, dt);
     snowmobiles.interpolateVisuals(alpha); // all placed snowmobiles
     const cam = playerSkier.getCameraTarget(alpha, dt);
-    scene.updateSkierCamera(cam.position, cam.lookAt, dt);
+    scene.updateSkierCamera(cam.position, cam.lookAt, dt, cam.up, cam.fov);
     ui.updateSkierSpeed(playerSkier.speed, playerSkier.isClimbing, playerSkier.y);
   } else if (isTourMode) {
     tourTime += dt;

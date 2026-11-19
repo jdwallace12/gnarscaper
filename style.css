@@ -560,6 +560,37 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 500;
 }
 
+.skier-view-toggle-btn {
+  pointer-events: auto;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 5px 11px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.skier-view-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(100, 181, 246, 0.5);
+  box-shadow: 0 0 10px rgba(100, 181, 246, 0.25);
+}
+
+.skier-view-toggle-btn.first-person {
+  background: rgba(100, 181, 246, 0.22);
+  border-color: rgba(100, 181, 246, 0.65);
+  color: #90caf9;
+  box-shadow: 0 0 12px rgba(100, 181, 246, 0.35);
+}
+
 .skier-hud-controls {
   display: flex;
   align-items: center;
@@ -783,6 +814,7 @@ input[type="range"]::-moz-range-thumb {
 
   .action-jump { bottom: 6px; left: 48px; font-size: 1.2rem; }
   .action-parachute { top: 48px; left: 6px; font-size: 1.2rem; }
+  .action-view { top: 6px; left: 6px; font-size: 1.1rem; }
   .action-exit { top: 6px; right: 6px; font-size: 0.8rem; background: rgba(248, 113, 113, 0.2); border-color: rgba(248, 113, 113, 0.4); }
 
   .tool-btn:active {

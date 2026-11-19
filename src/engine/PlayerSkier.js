@@ -41,6 +41,10 @@ export class PlayerSkier {
     // Camera pitch (controlled by W/S)
     this.cameraPitch = 0; // radians, positive = look up
 
+    // First-person view toggle & event callback
+    this.firstPerson = false;
+    this.onCameraViewChange = null;
+
     // Smooth height tracking (prevents Y-axis snapping/jitter)
     this._prevY = 0;
 
@@ -66,6 +70,12 @@ export class PlayerSkier {
     // Pre-allocated vectors (avoid GC micro-pauses from per-frame allocations)
     this._camPosVec = new THREE.Vector3();
     this._lookAtVec = new THREE.Vector3();
+    this._camUpVec = new THREE.Vector3(0, 1, 0);
+    this._fpLocalEye = new THREE.Vector3();
+    this._fpEyeWorld = new THREE.Vector3();
+    this._fpLocalFwd = new THREE.Vector3();
+    this._fpLocalUp = new THREE.Vector3();
+    this._fpWorldFwd = new THREE.Vector3();
 
     // Dual Ski Carving Trails (clean crisp powder blue shadow grooves)
     this._trailMat = new THREE.LineBasicMaterial({ color: 0x4a7298, transparent: true, opacity: 0.9 });
@@ -201,9 +211,54 @@ export class PlayerSkier {
     if (this._leftTrail) this._leftTrail.visible = this._trailsVisible;
     if (this._rightTrail) this._rightTrail.visible = this._trailsVisible;
 
+    this._updateMeshVisibility();
+
     // Start listening for input
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
+  }
+
+  /** Toggle between 3rd-person chase camera and 1st-person POV */
+  toggleCameraView() {
+    this.firstPerson = !this.firstPerson;
+    if (!this.firstPerson) {
+      // Re-entering 3rd person: smoothly snap chase camera behind skier
+      this.cameraHeading = this.heading;
+      this._smoothCamY = undefined;
+      this._smoothLookY = undefined;
+    }
+    this._updateMeshVisibility();
+    if (this.onCameraViewChange) {
+      this.onCameraViewChange(this.firstPerson);
+    }
+    return this.firstPerson;
+  }
+
+  /** Set first person camera mode explicitly */
+  setCameraView(firstPerson) {
+    if (this.firstPerson === !!firstPerson) return;
+    this.firstPerson = !!firstPerson;
+    if (!this.firstPerson) {
+      this.cameraHeading = this.heading;
+      this._smoothCamY = undefined;
+      this._smoothLookY = undefined;
+    }
+    this._updateMeshVisibility();
+    if (this.onCameraViewChange) {
+      this.onCameraViewChange(this.firstPerson);
+    }
+  }
+
+  /** Update skier body part visibility for 1st vs 3rd person */
+  _updateMeshVisibility() {
+    if (!this.mesh) return;
+    const fp = !!this.firstPerson;
+    // In 1st person, hide head, helmet, and torso to prevent near-plane clipping
+    if (this._head) this._head.visible = !fp;
+    if (this._helmet) this._helmet.visible = !fp;
+    if (this._torso) this._torso.visible = !fp;
+    // Parachute visible only in 3rd person or aloft
+    if (this._parachute) this._parachute.visible = !fp && this.paragliding;
   }
 
   /** Remove the player skier and clean up */
@@ -1419,7 +1474,7 @@ export class PlayerSkier {
 
     // Toggle Parachute visibility and animation
     if (this._parachute) {
-      this._parachute.visible = this.paragliding;
+      this._parachute.visible = this.paragliding && !this.firstPerson;
       if (this.paragliding) {
         this._parachute.position.set(x, y + 0.15 - (this._kneeCompression || 0) * 0.5, z);
         const targetRotZ = -lean * 0.5;
@@ -1429,6 +1484,9 @@ export class PlayerSkier {
         this._parachute.rotation.x += (targetRotX - this._parachute.rotation.x) * smoothFactor;
       }
     }
+
+    // Keep head/torso hidden in first-person mode
+    this._updateMeshVisibility();
 
     // Update splash particles
     this._updateSplashParticles(dt);
@@ -1518,11 +1576,44 @@ export class PlayerSkier {
     }
   }
 
-  /** Get the chase camera target position and look-at (uses pre-allocated vectors) */
+  /** Get the chase or first-person camera target position and look-at (uses pre-allocated vectors) */
   getCameraTarget(alpha, dt) {
-    // Snowmobile camera — wider, higher, speed-scaled pull-back
+    // Snowmobile camera
     if (this.state === 'snowmobile' && this.snowmobile) {
       const sno = this.snowmobile;
+
+      if (this.firstPerson) {
+        const rp = sno.getRiderPosition();
+        const snoHeading = (sno.mesh ? sno.mesh.rotation.y : sno.heading);
+        const snoPitch = (sno.mesh ? sno.mesh.rotation.x : 0);
+        const snoRoll = (sno.mesh ? sno.mesh.rotation.z : 0);
+
+        const eyeH = 0.44;
+        const fwdOffset = 0.06;
+        const sinH = Math.sin(snoHeading);
+        const cosH = Math.cos(snoHeading);
+
+        const cx = rp.x + sinH * fwdOffset;
+        const cy = rp.y + eyeH;
+        const cz = rp.z + cosH * fwdOffset;
+
+        const pitch = snoPitch + (this.cameraPitch || 0) - 0.08;
+        const cosP = Math.cos(pitch);
+        const sinP = Math.sin(pitch);
+
+        const fx = sinH * cosP;
+        const fy = sinP;
+        const fz = cosH * cosP;
+
+        this._camPosVec.set(cx, cy, cz);
+        this._lookAtVec.set(cx + fx * 15, cy + fy * 15, cz + fz * 15);
+
+        this._camUpVec.set(-Math.sin(snoRoll) * cosH, Math.cos(snoRoll), Math.sin(snoRoll) * sinH);
+
+        const speedFov = Math.min(sno.speed * 0.4, 10);
+        return { position: this._camPosVec, lookAt: this._lookAtVec, up: this._camUpVec, fov: 72 + speedFov };
+      }
+
       const camDist = 8.0 + Math.min(sno.speed * 0.3, 6.0); // Pull back at high speed
       const camHeight = 5.5 + Math.min(sno.speed * 0.1, 3.0);
 
@@ -1546,7 +1637,8 @@ export class PlayerSkier {
 
       this._camPosVec.set(cx, this._snowCamY, cz);
       this._lookAtVec.set(sno.wx, sno.y + 1.0, sno.wz);
-      return { position: this._camPosVec, lookAt: this._lookAtVec };
+      this._camUpVec.set(0, 1, 0);
+      return { position: this._camPosVec, lookAt: this._lookAtVec, up: this._camUpVec, fov: 55 };
     }
 
     // Dedicated rock-solid ride camera when on a chairlift or tram
@@ -1560,6 +1652,23 @@ export class PlayerSkier {
       const chairHeading = this.chair.mesh.rotation.y;
       const camHeading = chairHeading + this._chairLookYaw;
 
+      if (this.firstPerson) {
+        const pitch = this._chairLookPitch - 0.05;
+        const cosP = Math.cos(pitch);
+        const sinP = Math.sin(pitch);
+        const sinH = Math.sin(camHeading);
+        const cosH = Math.cos(camHeading);
+
+        const cx = curX + sinH * 0.15;
+        const cy = curY + 0.62;
+        const cz = curZ + cosH * 0.15;
+
+        this._camPosVec.set(cx, cy, cz);
+        this._lookAtVec.set(cx + sinH * cosP * 15, cy + sinP * 15, cz + cosH * cosP * 15);
+        this._camUpVec.set(0, 1, 0);
+        return { position: this._camPosVec, lookAt: this._lookAtVec, up: this._camUpVec, fov: 68 };
+      }
+
       const camDist = 7.5;
       const camHeight = 3.2 + this._chairLookPitch * 1.5;
 
@@ -1571,7 +1680,56 @@ export class PlayerSkier {
 
       this._camPosVec.set(camX, camY, camZ);
       this._lookAtVec.set(curX, lookY, curZ);
-      return { position: this._camPosVec, lookAt: this._lookAtVec };
+      this._camUpVec.set(0, 1, 0);
+      return { position: this._camPosVec, lookAt: this._lookAtVec, up: this._camUpVec, fov: 55 };
+    }
+
+    // First-person ski camera mode
+    if (this.firstPerson && this.mesh) {
+      this.mesh.updateMatrixWorld();
+
+      // Eye position in local mesh coordinates (Y=0.38 is eye level, Z=0.03 is slightly forward)
+      this._fpLocalEye.set(0, 0.38, 0.03);
+      this._fpEyeWorld.copy(this._fpLocalEye).applyMatrix4(this.mesh.matrixWorld);
+
+      // Subtle speed vibration / chatter when skiing fast on snow
+      if (this.grounded && this.speed > 6.0) {
+        const chatter = Math.min((this.speed - 6.0) / 14.0, 1.0) * 0.012;
+        this._fpEyeWorld.y += (Math.random() - 0.5) * chatter;
+        this._fpEyeWorld.x += (Math.random() - 0.5) * chatter * 0.5;
+      }
+
+      // Terrain clearance guard
+      const terrH = this.terrain.getInterpolatedHeight(this._fpEyeWorld.x, this._fpEyeWorld.z);
+      if (isFinite(terrH) && this._fpEyeWorld.y < terrH + 0.35) {
+        this._fpEyeWorld.y = terrH + 0.35;
+      }
+
+      // Look direction:
+      // Base glance is pitched down slightly (-0.12 rad, ~7 deg) so slopes and ski tips are naturally in view
+      const totalPitch = (this.cameraPitch || 0) - 0.12;
+
+      this._fpLocalFwd.set(0, Math.sin(totalPitch), Math.cos(totalPitch));
+      this._fpLocalUp.set(0, Math.cos(totalPitch), -Math.sin(totalPitch));
+
+      this._fpWorldFwd.copy(this._fpLocalFwd).applyQuaternion(this.mesh.quaternion);
+      this._camUpVec.copy(this._fpLocalUp).applyQuaternion(this.mesh.quaternion);
+
+      // On the ground, dampen roll slightly to prevent disorientation during fast carving turns
+      if (this.grounded) {
+        this._camUpVec.lerp(new THREE.Vector3(0, 1, 0), 0.35).normalize();
+      }
+
+      this._camPosVec.copy(this._fpEyeWorld);
+      this._lookAtVec.copy(this._fpEyeWorld).addScaledVector(this._fpWorldFwd, 15.0);
+
+      // Dynamic FOV with speed & tuck
+      const isTucking = this._keys.forward && this.grounded && !this.isClimbing;
+      const tuckFov = isTucking ? 4 : 0;
+      const speedFov = Math.min(this.speed * 0.35, 8);
+      const fov = 72 + tuckFov + speedFov;
+
+      return { position: this._camPosVec, lookAt: this._lookAtVec, up: this._camUpVec, fov };
     }
 
     // Interpolate everything strictly to exactly match visual drawing
@@ -1671,7 +1829,8 @@ export class PlayerSkier {
 
     this._camPosVec.set(camX, this._smoothCamY, camZ);
     this._lookAtVec.set(x, this._smoothLookY, z);
-    return { position: this._camPosVec, lookAt: this._lookAtVec };
+    this._camUpVec.set(0, 1, 0);
+    return { position: this._camPosVec, lookAt: this._lookAtVec, up: this._camUpVec, fov: 55 };
   }
 
   /** Toggle parachute flight state or launch from ground */
@@ -1705,7 +1864,11 @@ export class PlayerSkier {
       case 'ArrowRight': case 'd': case 'D': e.preventDefault(); this._keys.right = true; break;
       case 'ArrowUp':    case 'w': case 'W': e.preventDefault(); this._keys.forward = true; this._keys.lookUp = true; break;
       case 'ArrowDown':  case 's': case 'S': e.preventDefault(); this._keys.brake = true; this._keys.lookDown = true; break;
-      case 'Shift':      case 'z': case 'Z': case 'c': case 'C': e.preventDefault(); this._keys.grab = true; break;
+      case 'Shift':      case 'z': case 'Z': e.preventDefault(); this._keys.grab = true; break;
+      case 'v': case 'V': case 'c': case 'C':
+        e.preventDefault();
+        this.toggleCameraView();
+        break;
       case 'x': case 'X':
         this._keys.paraglide = true;
         this.toggleParachute();
@@ -1725,7 +1888,7 @@ export class PlayerSkier {
       case 'ArrowRight': case 'd': case 'D': this._keys.right = false; break;
       case 'ArrowUp':    case 'w': case 'W': this._keys.forward = false; this._keys.lookUp = false; break;
       case 'ArrowDown':  case 's': case 'S': this._keys.brake = false; this._keys.lookDown = false; break;
-      case 'Shift':      case 'z': case 'Z': case 'c': case 'C': this._keys.grab = false; break;
+      case 'Shift':      case 'z': case 'Z': this._keys.grab = false; break;
       case 'x': case 'X':  this._keys.paraglide = false; break;
       case ' ':            this._keys.jump = false; break;
       case 'e': case 'E':  this._keys.mount = false; break;
@@ -1995,22 +2158,60 @@ export class PlayerSkier {
     group.add(rightLeg);
     this._rightLeg = rightLeg;
 
-    // Skis
-    const leftSki = new THREE.Mesh(
-      new THREE.BoxGeometry(0.09, 0.03, 0.7),
-      this._skiMat
-    );
-    leftSki.position.set(-0.09, 0.015, 0);
-    leftSki.castShadow = true;
+    // Skis with curved tips and bindings
+    const skiMat = this._skiMat;
+    const bindingMat = new THREE.MeshStandardMaterial({ color: 0x1a1a24, roughness: 0.5 });
+
+    const createSki = (xOffset) => {
+      const skiGroup = new THREE.Group();
+      
+      // Main ski body
+      const plank = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.025, 0.8),
+        skiMat
+      );
+      plank.position.set(0, 0, 0.05);
+      plank.castShadow = true;
+      skiGroup.add(plank);
+
+      // Curved tip turned upward at front
+      const tip = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.02, 0.16),
+        skiMat
+      );
+      tip.position.set(0, 0.025, 0.48);
+      tip.rotation.x = 0.35;
+      tip.castShadow = true;
+      skiGroup.add(tip);
+
+      // Turned up tail at back
+      const tail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.02, 0.12),
+        skiMat
+      );
+      tail.position.set(0, 0.015, -0.38);
+      tail.rotation.x = -0.25;
+      tail.castShadow = true;
+      skiGroup.add(tail);
+
+      // Binding in center
+      const binding = new THREE.Mesh(
+        new THREE.BoxGeometry(0.065, 0.03, 0.16),
+        bindingMat
+      );
+      binding.position.set(0, 0.025, 0);
+      binding.castShadow = true;
+      skiGroup.add(binding);
+
+      skiGroup.position.set(xOffset, 0.015, 0);
+      return skiGroup;
+    };
+
+    const leftSki = createSki(-0.09);
     group.add(leftSki);
     this._leftSki = leftSki;
 
-    const rightSki = new THREE.Mesh(
-      new THREE.BoxGeometry(0.09, 0.03, 0.7),
-      this._skiMat
-    );
-    rightSki.position.set(0.09, 0.015, 0);
-    rightSki.castShadow = true;
+    const rightSki = createSki(0.09);
     group.add(rightSki);
     this._rightSki = rightSki;
 
