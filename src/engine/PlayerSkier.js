@@ -45,6 +45,17 @@ export class PlayerSkier {
     this.firstPerson = false;
     this.onCameraViewChange = null;
 
+    // 3rd-person camera angle presets (cycled with C key)
+    this._cameraPresets = [
+      { name: 'Follow',    icon: '🎥', dist: 10.5, height: 9.5,  lookY: 0.4, fov: 55, pitchMul: 5.0, lookPitchMul: 6.0 },
+      { name: 'Close',     icon: '🎬', dist: 5.0,  height: 3.8,  lookY: 0.6, fov: 62, pitchMul: 3.0, lookPitchMul: 4.0 },
+      { name: 'Cinematic', icon: '🎞️', dist: 18.0, height: 14.0, lookY: 0.2, fov: 48, pitchMul: 6.0, lookPitchMul: 7.0 },
+      { name: 'Top Down',  icon: '🛰️', dist: 2.0,  height: 22.0, lookY: 0.0, fov: 50, pitchMul: 2.0, lookPitchMul: 1.0 },
+      { name: 'Low',       icon: '📷', dist: 7.0,  height: 2.2,  lookY: 0.8, fov: 68, pitchMul: 2.5, lookPitchMul: 3.0 },
+    ];
+    this._cameraPresetIdx = 0;
+    this.onCameraPresetChange = null;
+
     // Smooth height tracking (prevents Y-axis snapping/jitter)
     this._prevY = 0;
 
@@ -226,6 +237,8 @@ export class PlayerSkier {
       this.cameraHeading = this.heading;
       this._smoothCamY = undefined;
       this._smoothLookY = undefined;
+      this._currentCamDist = undefined;
+      this._currentCamHeightBonus = undefined;
     }
     this._updateMeshVisibility();
     if (this.onCameraViewChange) {
@@ -242,11 +255,33 @@ export class PlayerSkier {
       this.cameraHeading = this.heading;
       this._smoothCamY = undefined;
       this._smoothLookY = undefined;
+      this._currentCamDist = undefined;
+      this._currentCamHeightBonus = undefined;
     }
     this._updateMeshVisibility();
     if (this.onCameraViewChange) {
       this.onCameraViewChange(this.firstPerson);
     }
+  }
+
+  /** Cycle to the next 3rd-person camera angle preset */
+  cycleCameraPreset(direction = 1) {
+    const len = this._cameraPresets.length;
+    this._cameraPresetIdx = ((this._cameraPresetIdx + direction) % len + len) % len;
+    // Reset smooth tracking so the transition is clean
+    this._smoothCamY = undefined;
+    this._smoothLookY = undefined;
+    this._currentCamDist = undefined;
+    this._currentCamHeightBonus = undefined;
+    if (this.onCameraPresetChange) {
+      this.onCameraPresetChange(this.cameraPreset);
+    }
+    return this.cameraPreset;
+  }
+
+  /** Get the current 3rd-person camera preset */
+  get cameraPreset() {
+    return this._cameraPresets[this._cameraPresetIdx];
   }
 
   /** Update skier body part visibility for 1st vs 3rd person */
@@ -1772,9 +1807,10 @@ export class PlayerSkier {
       this.cameraHeading += diff * headingSmooth;
     }
 
-    const targetCamDist = 10.5;
+    const preset = this.cameraPreset;
+    const targetCamDist = preset.dist;
     const pitchForCam = this.cameraPitch || 0;
-    const targetCamHeight = 9.5 + pitchForCam * 5; 
+    const targetCamHeight = preset.height + pitchForCam * preset.pitchMul; 
 
     let collisionDist = targetCamDist;
     let collisionHeightBonus = 0;
@@ -1821,7 +1857,7 @@ export class PlayerSkier {
     this._smoothCamY += (camY - this._smoothCamY) * ySmooth;
     if (!isFinite(this._smoothCamY)) this._smoothCamY = camY;
 
-    const lookY = h + 0.4 + pitchForCam * 6.0;
+    const lookY = h + preset.lookY + pitchForCam * preset.lookPitchMul;
     if (this._smoothLookY === undefined || !isFinite(this._smoothLookY)) this._smoothLookY = lookY;
     const lookYSmooth = 1 - Math.pow(0.005, frameDt);
     this._smoothLookY += (lookY - this._smoothLookY) * lookYSmooth;
@@ -1830,7 +1866,7 @@ export class PlayerSkier {
     this._camPosVec.set(camX, this._smoothCamY, camZ);
     this._lookAtVec.set(x, this._smoothLookY, z);
     this._camUpVec.set(0, 1, 0);
-    return { position: this._camPosVec, lookAt: this._lookAtVec, up: this._camUpVec, fov: 55 };
+    return { position: this._camPosVec, lookAt: this._lookAtVec, up: this._camUpVec, fov: preset.fov };
   }
 
   /** Toggle parachute flight state or launch from ground */
@@ -1865,9 +1901,15 @@ export class PlayerSkier {
       case 'ArrowUp':    case 'w': case 'W': e.preventDefault(); this._keys.forward = true; this._keys.lookUp = true; break;
       case 'ArrowDown':  case 's': case 'S': e.preventDefault(); this._keys.brake = true; this._keys.lookDown = true; break;
       case 'Shift':      case 'z': case 'Z': e.preventDefault(); this._keys.grab = true; break;
-      case 'v': case 'V': case 'c': case 'C':
+      case 'v': case 'V':
         e.preventDefault();
         this.toggleCameraView();
+        break;
+      case 'c': case 'C':
+        e.preventDefault();
+        if (!this.firstPerson) {
+          this.cycleCameraPreset();
+        }
         break;
       case 'x': case 'X':
         this._keys.paraglide = true;

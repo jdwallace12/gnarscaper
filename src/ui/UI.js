@@ -1,8 +1,8 @@
 import { TOOLS } from '../tools/tools.js';
 
 export class UI {
-  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onToggleSkierView, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset, onSmoothGlobal, onSmoothStart }) {
-    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onToggleSkierView, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset, onSmoothGlobal, onSmoothStart };
+  constructor({ onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onToggleSkierView, onCycleCameraPreset, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset, onSmoothGlobal, onSmoothStart }) {
+    this.callbacks = { onToolChange, onBrushRadius, onBrushStrength, onNoiseLevel, onSeaLevel, onBaseElevation, onSnowPack, onCloudAmount, onUndo, onRedo, onReset, onSave, onLoad, onTreeDensity, onToggleWireframe, onToggleSnow, onToggleClouds, onToggleSkierMode, onToggleTour, onToggleTrails, onToggleSkierView, onCycleCameraPreset, onResetCamera, onMobileControl, onTimeOfDay, onLightingPreset, onSmoothGlobal, onSmoothStart };
     this.activeToolKey = 'raise';
     this.presetKeys = ['golden', 'noon', 'sunset', 'night'];
     this.currentPresetIdx = 0;
@@ -286,7 +286,7 @@ export class UI {
     slidersContainer.id = 'brush-sliders-container';
     brushSettings.appendChild(slidersContainer);
     
-    this.radiusSlider = this._slider(slidersContainer, 'Brush Size', 1, 100, 16, (v) => {
+    this.radiusSlider = this._slider(slidersContainer, 'Brush Size', 1, 250, 16, (v) => {
       this.callbacks.onBrushRadius(v);
     }, 1, '<kbd>[</kbd> and <kbd>]</kbd>');
 
@@ -536,12 +536,15 @@ export class UI {
           <span class="skier-hud-unit">ft</span>
         </div>
         <div class="skier-hud-divider"></div>
-        <button class="skier-view-toggle-btn" id="skier-view-btn" title="Toggle 1st / 3rd Person View (Press V)">
-          <span id="skier-view-icon">🎥</span> <span id="skier-view-text">3rd Person</span>
+        <button class="skier-view-toggle-btn" id="skier-view-btn" title="Switch to 1st Person View (Press V)">
+          <span id="skier-view-icon">🥽</span> <span id="skier-view-text">1st Person</span>
+        </button>
+        <button class="skier-cam-preset-btn" id="skier-cam-preset-btn" title="Cycle Camera Angle (Press C)">
+          <span id="skier-cam-preset-icon">🎥</span> <span id="skier-cam-preset-text">Follow</span>
         </button>
         <div class="skier-hud-divider skier-hud-main-divider"></div>
         <div class="skier-hud-controls" id="skier-controls">
-          <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute · <b>V</b> 1st View</span>
+          <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute · <b>V</b> 1st View · <b>C</b> Camera</span>
           <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
         </div>
       </div>
@@ -552,6 +555,15 @@ export class UI {
         e.preventDefault();
         if (this.callbacks.onToggleSkierView) {
           this.callbacks.onToggleSkierView();
+        }
+      });
+    }
+    const presetBtn = this._skierHud.querySelector('#skier-cam-preset-btn');
+    if (presetBtn) {
+      presetBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (this.callbacks.onCycleCameraPreset) {
+          this.callbacks.onCycleCameraPreset();
         }
       });
     }
@@ -958,7 +970,7 @@ export class UI {
           this.noiseSlider.value = v;
           this.noiseSlider.dispatchEvent(new Event('input'));
         } else {
-          const v = Math.min(100, parseFloat(this.radiusSlider.value) + 4);
+          const v = Math.min(250, parseFloat(this.radiusSlider.value) + 4);
           this.radiusSlider.value = v;
           this.radiusSlider.dispatchEvent(new Event('input'));
         }
@@ -1015,19 +1027,20 @@ export class UI {
     const el = document.getElementById('skier-controls');
     if (!el) return;
     const viewLabel = firstPerson ? '3rd View' : '1st View';
+    const camLabel = firstPerson ? '' : ' · <b>C</b> Camera';
     if (state === 'riding') {
       el.innerHTML = `
-        <span><b>←/→/W/S</b> Look Around · <b>V</b> ${viewLabel} · <b>A</b> Avalanche · <b>Space</b> Drop Skier</span>
+        <span><b>←/→/W/S</b> Look Around · <b>V</b> ${viewLabel}${camLabel} · <b>A</b> Avalanche · <b>Space</b> Drop Skier</span>
         <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
       `;
     } else if (state === 'snowmobile') {
       el.innerHTML = `
-        <span>🏍️ <b>W/S</b> Throttle/Brake · <b>A/D</b> Steer · <b>Space</b> Launch off! · <b>E</b> Dismount · <b>V</b> ${viewLabel} · <b>N</b> Spawn sled</span>
+        <span>🏍️ <b>W/S</b> Throttle/Brake · <b>A/D</b> Steer · <b>Space</b> Launch off! · <b>E</b> Dismount · <b>V</b> ${viewLabel}${camLabel} · <b>N</b> Spawn sled</span>
         <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
       `;
     } else {
       el.innerHTML = `
-        <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute · <b>V</b> ${viewLabel} · <b>N</b> Snowmobile</span>
+        <span><b>←/→</b> Steer / Air Spin · <b>↑/↓</b> Push / Flips · <b>Space</b> Jump · <b>Shift/Z</b> Air Grab · <b>X</b> Parachute · <b>V</b> ${viewLabel}${camLabel} · <b>N</b> Snowmobile</span>
         <span style="opacity:0.65; margin-left:6px;">(Press <b>ESC</b> to exit)</span>
       `;
     }
@@ -1037,9 +1050,23 @@ export class UI {
     const btn = document.getElementById('skier-view-btn');
     const icon = document.getElementById('skier-view-icon');
     const text = document.getElementById('skier-view-text');
-    if (btn) btn.classList.toggle('first-person', !!firstPerson);
-    if (icon) icon.textContent = firstPerson ? '🥽' : '🎥';
-    if (text) text.textContent = firstPerson ? '1st Person' : '3rd Person';
+    if (btn) {
+      btn.classList.toggle('first-person', !!firstPerson);
+      btn.title = firstPerson ? 'Switch to 3rd Person View (Press V)' : 'Switch to 1st Person View (Press V)';
+    }
+    // When in 1st person, show option to switch to 3rd person; when in 3rd person, show option to switch to 1st person
+    if (icon) icon.textContent = firstPerson ? '🎥' : '🥽';
+    if (text) text.textContent = firstPerson ? '3rd Person' : '1st Person';
+    // Show/hide the camera preset button (only relevant in 3rd person)
+    const presetBtn = document.getElementById('skier-cam-preset-btn');
+    if (presetBtn) presetBtn.style.display = firstPerson ? 'none' : '';
+  }
+
+  updateCameraPreset(preset) {
+    const icon = document.getElementById('skier-cam-preset-icon');
+    const text = document.getElementById('skier-cam-preset-text');
+    if (icon) icon.textContent = preset.icon;
+    if (text) text.textContent = preset.name;
   }
 
   showSkierPlacement(show) {

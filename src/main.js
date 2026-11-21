@@ -186,6 +186,11 @@ const ui = new UI({
       playerSkier.toggleCameraView();
     }
   },
+  onCycleCameraPreset() {
+    if (playerSkier && playerSkier.active) {
+      playerSkier.cycleCameraPreset();
+    }
+  },
   onResetCamera() { scene.resetCamera(); },
   onMobileControl(dir, active) {
     if (dir === 'view' && active) {
@@ -236,6 +241,10 @@ const ui = new UI({
 playerSkier.onCameraViewChange = (firstPerson) => {
   ui.updateSkierViewButton(firstPerson);
   ui.setSkierControlsText(playerSkier.state, firstPerson);
+};
+
+playerSkier.onCameraPresetChange = (preset) => {
+  ui.updateCameraPreset(preset);
 };
 
 function generateInitialFoliage() {
@@ -531,6 +540,7 @@ function enterSkierModeAt(wx, wz) {
   brush.cursorMesh.visible = false;
   ui.showSkierHUD(true);
   ui.updateSkierViewButton(playerSkier.firstPerson);
+  ui.updateCameraPreset(playerSkier.cameraPreset);
   ui.setSkierControlsText(playerSkier.state, playerSkier.firstPerson);
 }
 
@@ -546,16 +556,13 @@ function exitSkierMode() {
   ui.updateSkierViewButton(false);
 }
 
-// Listen for Escape to exit ski mode, N to spawn snowmobile, V to toggle 1st/3rd person view
+// Listen for Escape to exit ski mode, N to spawn snowmobile (V and C are handled in PlayerSkier._onKeyDown)
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && isSkierMode) {
     exitSkierMode();
   }
   if ((e.key === 'n' || e.key === 'N') && isSkierMode && playerSkier.active) {
     playerSkier.spawnSnowmobileNearby();
-  }
-  if ((e.key === 'v' || e.key === 'V') && isSkierMode && playerSkier.active) {
-    playerSkier.toggleCameraView();
   }
 });
 
